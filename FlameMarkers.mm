@@ -3,6 +3,7 @@
 #import <dlfcn.h>
 #include <cstring>
 #include <vector>
+#include <deque>
 #include <cmath>
 #include <utility>
 #include <unordered_map>
@@ -86,7 +87,7 @@ P invoke(P m,P self,P* args,bool& ok) {
     if(!ok) return nullptr;
     if(!m){ok=false;return nullptr;}
     P exception=nullptr; P result=runtime_invoke(m,self,args,&exception);
-    if(exception) { ok=false; NSLog(@"[Flame v8] Managed exception in %s",method_get_name(m)); }
+    if(exception) { ok=false; NSLog(@"[Flame v9] Managed exception in %s",method_get_name(m)); }
     if(result && !exception && roots) roots->hold(result);
     return exception?nullptr:result;
 }
@@ -99,8 +100,16 @@ static float FlameDistanceSquared(V3 a,V3 b){
 }
 static bool finiteV3(V3 v){return std::isfinite(v.x)&&std::isfinite(v.y)&&std::isfinite(v.z);}
 #include "FlameExtras.hpp"
+#include "FlameScene.hpp"
+#include "FlameInput.hpp"
+#include "FlameCamera.hpp"
 struct Bone {uint32_t handle;int parent=-1;};
-struct Target {uint32_t player=0,network=0,head=0;int actor=-1;std::vector<Bone> bones;};
+struct Target {
+    uint32_t player=0,network=0,head=0;
+    int actor=-1,chest=-1,pelvis=-1;
+    std::vector<Bone> bones;
+};
+struct TrailPoint {V3 position;double time;};
 struct Segment {CGPoint a,b;bool enemy;};
 struct Item {CGRect box;NSString* text;bool enemy;};
 struct HeadMarker {CGPoint point;CGFloat radius;bool enemy;};
@@ -153,7 +162,20 @@ struct Api {
     BOOL _noSpread,_speedHack,_unlimitedAmmo,_fovOverride,_crosshair,_corners,_filled,_headCircle,_showFps;
     float _speedFactor,_fovValue,_maxDistance,_lineWidth,_aimSmoothing;
     float _aimDelay,_aimMaxTurn,_aimDeadzone,_aimDistance;
-    BOOL _aimRing,_glow,_vignette,_centerDot;
+    BOOL _aimRing,_glow,_vignette,_centerDot,_trail;
+    NSInteger _aimPoint;
+    FlameScene::State _sceneVisuals;
+    FlameInput::State _input;
+    FlameCamera::State _thirdView;
+    BOOL _thirdPerson,_spin;
+    float _cameraDistance,_spinSpeed;
+    BOOL _nextAgent;
+    BOOL _trigger,_bunnyHop;float _triggerDelay;double _bunnyProbe;
+    BOOL _skyTint,_sceneLight,_playerTint;
+    float _skyHue,_sceneHour,_playerHue;
+    float _trailTime;
+    std::deque<TrailPoint> _trailPoints;
+    std::vector<std::pair<Segment,float>> _trailSegments;
     double _fireStarted;
     CGGradientRef _vignetteGradient;NSInteger _accent;
     std::vector<HeadMarker> _headMarkers;double _observeAfter,_fpsStart;NSInteger _frames;float _observedFPS;
@@ -162,7 +184,7 @@ struct Api {
     if((self=[super initWithFrame:frame])){
         self.backgroundColor=UIColor.clearColor;self.userInteractionEnabled=YES;
         self.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight;
-        _sceneHandle=-1;_status=@"Flame v8: ESP off";_aimRadius=100;_aimSmoothing=10;_aimMaxTurn=180;_aimRing=YES;
+        _sceneHandle=-1;_status=@"Flame v9: ESP off";_aimRadius=100;_aimSmoothing=10;_aimMaxTurn=180;_aimRing=YES;_trailTime=2;_cameraDistance=3;_spinSpeed=180;_triggerDelay=80;_skyHue=210;_sceneHour=14;_playerHue=180;
         _speedFactor=1.5;_fovValue=90;_lineWidth=1.2;_corners=YES;_showFps=YES;
         _onlyEnemies=YES;_showBoxes=YES;_showSkeleton=YES;_showHealth=YES;_showDistance=YES;
         CGFloat width=fmin(740,frame.size.width-42),height=fmin(355,frame.size.height-30);
@@ -175,8 +197,8 @@ struct Api {
 }
 - (NSDictionary*)preferences {
     NSDictionary* options=@{FlameOptionKey(Master):@NO,FlameOptionKey(Enemies):@(_onlyEnemies),FlameOptionKey(Boxes):@(_showBoxes),FlameOptionKey(Skeleton):@(_showSkeleton),FlameOptionKey(Health):@(_showHealth),FlameOptionKey(Names):@(_showNames),FlameOptionKey(Distance):@(_showDistance),FlameOptionKey(Tracers):@(_showTracers),FlameOptionKey(Debug):@(_debug),FlameOptionKey(Aim):@(_aim),FlameOptionKey(Recoil):@(_noRecoil),FlameOptionKey(NoSpread):@(_noSpread),FlameOptionKey(Speed):@(_speedHack),FlameOptionKey(Ammo):@(_unlimitedAmmo),FlameOptionKey(Fov):@(_fovOverride),FlameOptionKey(Crosshair):@(_crosshair),FlameOptionKey(CornerBox):@(_corners),FlameOptionKey(FilledBox):@(_filled),FlameOptionKey(HeadCircle):@(_headCircle),FlameOptionKey(FPSCounter):@(_showFps),
-        FlameOptionKey(AimRing):@(_aimRing),FlameOptionKey(Glow):@(_glow),FlameOptionKey(Vignette):@(_vignette),FlameOptionKey(CenterDot):@(_centerDot)};
-    return @{@"options":options,@"aimRadius":@(_aimRadius),@"aimSmoothing":@(_aimSmoothing),@"aimDelay":@(_aimDelay),@"aimMaxTurn":@(_aimMaxTurn),@"aimDeadzone":@(_aimDeadzone),@"aimDistance":@(_aimDistance),@"speedFactor":@(_speedFactor),@"fov":@(_fovValue),@"maxDistance":@(_maxDistance),@"lineWidth":@(_lineWidth),@"accent":@(_accent),@"fps":@(_displayLink.preferredFramesPerSecond)};
+        FlameOptionKey(AimRing):@(_aimRing),FlameOptionKey(Glow):@(_glow),FlameOptionKey(Vignette):@(_vignette),FlameOptionKey(CenterDot):@(_centerDot),FlameOptionKey(Trail):@(_trail),FlameOptionKey(SkyTint):@(_skyTint),FlameOptionKey(SceneLight):@(_sceneLight),FlameOptionKey(PlayerTint):@(_playerTint),FlameOptionKey(Trigger):@(_trigger),FlameOptionKey(BunnyHop):@(_bunnyHop),FlameOptionKey(ThirdPerson):@(_thirdPerson),FlameOptionKey(Spin):@(_spin)};
+    return @{@"options":options,@"cameraDistance":@(_cameraDistance),@"spinSpeed":@(_spinSpeed),@"triggerDelay":@(_triggerDelay),@"aimPoint":@(_aimPoint),@"trailTime":@(_trailTime),@"skyHue":@(_skyHue),@"sceneHour":@(_sceneHour),@"playerHue":@(_playerHue),@"aimRadius":@(_aimRadius),@"aimSmoothing":@(_aimSmoothing),@"aimDelay":@(_aimDelay),@"aimMaxTurn":@(_aimMaxTurn),@"aimDeadzone":@(_aimDeadzone),@"aimDistance":@(_aimDistance),@"speedFactor":@(_speedFactor),@"fov":@(_fovValue),@"maxDistance":@(_maxDistance),@"lineWidth":@(_lineWidth),@"accent":@(_accent),@"fps":@(_displayLink.preferredFramesPerSecond)};
 }
 - (void)flameSetOption:(NSInteger)tag value:(BOOL)value {
     UISwitch* change=[[UISwitch alloc]init];change.tag=tag;change.on=value;[self optionChanged:change];
@@ -185,6 +207,14 @@ struct Api {
     if(!std::isfinite(value))return;
     if([key isEqual:@"aimRadius"])_aimRadius=std::clamp(value,5.0,180.0);
     else if([key isEqual:@"aimSmoothing"])_aimSmoothing=std::clamp(value,1.0,25.0);
+    else if([key isEqual:@"cameraDistance"])_cameraDistance=std::clamp(value,1.0,5.0);
+    else if([key isEqual:@"spinSpeed"])_spinSpeed=std::clamp(value,45.0,720.0);
+    else if([key isEqual:@"triggerDelay"])_triggerDelay=std::clamp(value,0.0,350.0);
+    else if([key isEqual:@"aimPoint"])_aimPoint=(NSInteger)std::clamp(value,0.0,3.0);
+    else if([key isEqual:@"skyHue"])_skyHue=std::clamp(value,0.0,359.0);
+    else if([key isEqual:@"sceneHour"])_sceneHour=std::clamp(value,0.0,24.0);
+    else if([key isEqual:@"playerHue"])_playerHue=std::clamp(value,0.0,360.0);
+    else if([key isEqual:@"trailTime"])_trailTime=std::clamp(value,.5,5.0);
     else if([key isEqual:@"aimDelay"])_aimDelay=std::clamp(value,0.0,500.0);
     else if([key isEqual:@"aimMaxTurn"])_aimMaxTurn=std::clamp(value,15.0,360.0);
     else if([key isEqual:@"aimDeadzone"])_aimDeadzone=std::clamp(value,0.0,30.0);
@@ -199,7 +229,7 @@ struct Api {
 }
 - (void)flameSkinAction:(NSString*)action weapon:(NSDictionary*)weapon skin:(NSDictionary*)skin {
     if(!_enabled){_extraLabel.text=@"Включи модуль после загрузки матча";return;}
-    if(!weapon&&![action isEqual:@"restoreSkin"]&&![action isEqual:@"restoreModel"])return;
+    if(!weapon&&![action isEqual:@"restoreSkin"]&&![action isEqual:@"restoreModel"]&&![action isEqual:@"sticker"])return;
     _cosmeticsFault=NO;_skinRequest=@{@"action":action,@"weapon":weapon?:@{},@"skin":skin?:@{}};_extras.status=@"Проверка текущего оружия и выбранной конфигурации…";_extraLabel.text=_extras.status;
 }
 - (void)applyPreferences:(NSDictionary*)input {
@@ -217,6 +247,10 @@ struct Api {
     if([action isEqual:@"save"]){[NSUserDefaults.standardUserDefaults setObject:[self preferences] forKey:@"flame.v7.preferences"];_extraLabel.text=@"Настройки сохранены в приложении";}
     else if([action isEqual:@"load"]){id saved=[NSUserDefaults.standardUserDefaults objectForKey:@"flame.v7.preferences"];if([saved isKindOfClass:NSDictionary.class])[self applyPreferences:saved];else _extraLabel.text=@"Сохранённых настроек ещё нет";}
     else if([action isEqual:@"reset"]){_extras.desiredKnife=nil;[_extras.desiredSkins removeAllObjects];[self applyPreferences:FlameDefaultConfig()];_extraLabel.text=@"Стандартные настройки восстановлены";}
+    else if([action isEqual:@"nextAgent"]){
+        if(_enabled){_nextAgent=YES;_extraLabel.text=@"Поиск загруженного агента своей команды…";}
+        else _extraLabel.text=@"Включи модуль после загрузки матча";
+    }
     else if([action isEqual:@"stop"]){[self flameSetOption:Master value:NO];[_menu setRuntimeOption:Master value:NO];_extraLabel.text=@"Модуль выключен; сохранённые параметры восстановлены";}
 }
 
@@ -225,25 +259,22 @@ struct Api {
     if(_spectator){Runtime::gchandle_free(_spectator);_spectator=0;}_nextDiscovery=0;
     if(_controls){Runtime::gchandle_free(_controls);_controls=0;}
 }
-- (void)clearDrawing {_items.clear();_segments.clear();_tracers.clear();_dots.clear();_headMarkers.clear();}
+- (void)clearDrawing {_items.clear();_segments.clear();_tracers.clear();_dots.clear();_headMarkers.clear();_trailSegments.clear();}
 - (void)didMoveToWindow {
-    [super didMoveToWindow];[_gesture.view removeGestureRecognizer:_gesture];if(self.window)[self.window addGestureRecognizer:_gesture];else [self pause:@"Flame v8: paused"];
+    [super didMoveToWindow];[_gesture.view removeGestureRecognizer:_gesture];if(self.window)[self.window addGestureRecognizer:_gesture];else [self pause:@"Flame v9: paused"];
 }
 - (BOOL)gestureRecognizer:(UIGestureRecognizer*)a shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer*)b{return YES;}
 - (UIView*)hitTest:(CGPoint)p withEvent:(UIEvent*)e {UIView* hit=[super hitTest:p withEvent:e];return !_panel.hidden&&[hit isDescendantOfView:_panel]?hit:nil;}
-- (void)toggleMenu {
-    _panel.hidden=!_panel.hidden;
-    if(!_panel.hidden&&_extras.previewOwner){_extras.previewUntil=0;_observeAfter=0;}
-}
+- (void)toggleMenu {_panel.hidden=!_panel.hidden;}
 - (void)resetLocalState {
-    _extras.restorePlayer();_extras.resetCosmetics();
+    _extras.restorePlayer();_extras.resetCosmetics();_sceneVisuals.restorePlayer(_extras);_input.clear();_thirdView.clear(_extras);
     if(_activeLocal){Runtime::gchandle_free(_activeLocal);_activeLocal=0;}
-    _fireStarted=0;_observeAfter=0;_cosmeticsFault=_aimFault=NO;
+    _fireStarted=0;_observeAfter=0;_cosmeticsFault=_aimFault=NO;_trailPoints.clear();
     [_menu updateWeapon:-1 name:@"" skin:@""];
 }
 - (void)optionChanged:(UISwitch*)s {
     switch(s.tag){
-        case Master:_extras.status=s.on?@"Включение после проверки сцены":@"Модуль выключен; параметры восстановлены";_extraLabel.text=_extras.status;_extras.restoreFov();_extras.restorePlayer();_cosmeticsFault=_aimFault=NO;_fireStarted=0;_skinRequest=nil;[self clearTargets];[self clearDrawing];_enabled=s.on;_sceneHandle=-1;_retryAfter=0;_settledAfter=NSProcessInfo.processInfo.systemUptime+5;_fpsStart=0;_frames=0;_displayLink.paused=!_enabled;_status=_enabled?@"Flame v8: waiting for scene":@"Flame v8: ESP off";break;
+        case Master:_extras.status=s.on?@"Включение после проверки сцены":@"Модуль выключен; параметры восстановлены";_extraLabel.text=_extras.status;_extras.restoreFov();_extras.restorePlayer();_sceneVisuals.clear(_extras,true);_input.clear();_thirdView.clear(_extras);_nextAgent=NO;_trailPoints.clear();_cosmeticsFault=_aimFault=NO;_fireStarted=0;_skinRequest=nil;[self clearTargets];[self clearDrawing];_enabled=s.on;_sceneHandle=-1;_retryAfter=0;_settledAfter=NSProcessInfo.processInfo.systemUptime+5;_fpsStart=0;_frames=0;_displayLink.paused=!_enabled;_status=_enabled?@"Flame v9: waiting for scene":@"Flame v9: ESP off";break;
         case Enemies:_onlyEnemies=s.on;break;case Boxes:_showBoxes=s.on;break;case Skeleton:_showSkeleton=s.on;break;
         case Health:_showHealth=s.on;break;case Names:_showNames=s.on;break;case Distance:_showDistance=s.on;break;case Tracers:_showTracers=s.on;break;case Debug:_debug=s.on;break;
         case Aim:_aim=s.on;_aimFault=NO;_fireStarted=0;_nextDiscovery=0;break;
@@ -263,9 +294,15 @@ struct Api {
             }
             break;
         case CenterDot:_centerDot=s.on;break;
+        case Trail:_trail=s.on;if(!_trail)_trailPoints.clear();break;
+        case ThirdPerson:_thirdPerson=s.on;_thirdView.fault=false;if(!_thirdPerson)_thirdView.clear(_extras);break;
+        case Spin:_spin=s.on;break;
+        case Trigger:_trigger=s.on;_input.resetTrigger();break;
+        case BunnyHop:_bunnyHop=s.on;if(!_bunnyHop)_input.clear();break;
+        case SkyTint:_skyTint=s.on;break;case SceneLight:_sceneLight=s.on;break;case PlayerTint:_playerTint=s.on;break;
     }[self setNeedsDisplay];
 }
-- (void)pause:(NSString*)status {_extras.restoreFov();[self resetLocalState];_skinRequest=nil;_enabled=NO;_master.on=NO;[_menu setRuntimeOption:Master value:NO];_displayLink.paused=YES;[self clearTargets];[self clearDrawing];_status=status;[self setNeedsDisplay];}
+- (void)pause:(NSString*)status {_sceneVisuals.clear(_extras,false);_extras.restoreFov();[self resetLocalState];_skinRequest=nil;_enabled=NO;_master.on=NO;[_menu setRuntimeOption:Master value:NO];_displayLink.paused=YES;[self clearTargets];[self clearDrawing];_status=status;[self setNeedsDisplay];}
 - (void)waitForPlayers:(NSString*)status now:(NSTimeInterval)now {
     if(_activeLocal)[self resetLocalState];
     [self clearTargets];[self clearDrawing];
@@ -308,12 +345,17 @@ struct Api {
             P list=invoke(_api.bones,mesh,nullptr,ok);
             if(list&&array_length(list)<=256){
                 std::vector<P> objects;std::unordered_map<P,int> indices;
+                int chestRank=0;
                 for(int j=0;j<(int)array_length(list)&&ok;j++){
                     P index[]={&j};P bone=invoke(_api.get,list,index,ok);if(![self isAlive:bone ok:ok]||indices.count(bone))continue;
                     // Optional naming filter removes fine finger/toe/helper chains; no bone indices are guessed.
                     NSString* name=_api.name?[[self string:invoke(_api.name,bone,nullptr,ok)] lowercaseString]:@"";
                     BOOL fine=NO;for(NSString* token in @[@"finger",@"thumb",@"index",@"middle",@"pinky",@"little",@"toe",@"twist",@"helper",@"weapon",@"ik_"])if([name containsString:token]){fine=YES;break;}
                     if(fine)continue;
+                    NSString* compact=[[name componentsSeparatedByCharactersInSet:NSCharacterSet.alphanumericCharacterSet.invertedSet] componentsJoinedByString:@""];
+                    int rank=[compact hasSuffix:@"upperchest"]?4:[compact hasSuffix:@"chest"]?3:[compact hasSuffix:@"spine2"]?2:[compact hasSuffix:@"spine1"]?1:0;
+                    if(rank>chestRank){target.chest=(int)objects.size();chestRank=rank;}
+                    if([compact hasSuffix:@"pelvis"]||[compact hasSuffix:@"hips"])target.pelvis=(int)objects.size();
                     indices[bone]=(int)objects.size();objects.push_back(bone);target.bones.push_back({gchandle_new(bone,true),-1});
                 }
                 for(size_t j=0;j<objects.size()&&ok;j++){
@@ -331,20 +373,20 @@ struct Api {
 }
 - (void)sample {
     using namespace Runtime;[self clearDrawing];if(!_enabled)return;
-    if(UIApplication.sharedApplication.applicationState!=UIApplicationStateActive||!self.window){[self pause:@"Flame v8: paused in background"];return;}
-    if(!_ready)_ready=load();if(!_ready){_status=@"Flame v8: waiting for runtime";[self setNeedsDisplay];return;}
-    if(!NSThread.isMainThread||!thread_current()){[self pause:@"Flame v8: runtime thread unavailable"];return;}
-    if(!_apiReady)_apiReady=_api.init();if(!_apiReady){[self pause:@"Flame v8: required methods unavailable"];return;}
+    if(UIApplication.sharedApplication.applicationState!=UIApplicationStateActive||!self.window){[self pause:@"Flame v9: paused in background"];return;}
+    if(!_ready)_ready=load();if(!_ready){_status=@"Flame v9: waiting for runtime";[self setNeedsDisplay];return;}
+    if(!NSThread.isMainThread||!thread_current()){[self pause:@"Flame v9: runtime thread unavailable"];return;}
+    if(!_apiReady)_apiReady=_api.init();if(!_apiReady){[self pause:@"Flame v9: required methods unavailable"];return;}
     RootScope frameRoots;bool ok=true;
     P scene=invoke(_api.active,nullptr,nullptr,ok),raw=scene?object_unbox(scene):nullptr;
-    if(!raw){[self pause:@"Flame v8: no scene"];return;}
+    if(!raw){[self pause:@"Flame v9: no scene"];return;}
     P loaded=invoke(_api.loaded,raw,nullptr,ok),handle=invoke(_api.handle,raw,nullptr,ok);
-    if(!ok||!loaded||!handle){[self pause:@"Flame v8: scene check failed"];return;}
+    if(!ok||!loaded||!handle){[self pause:@"Flame v9: scene check failed"];return;}
     int current=[self integer:handle];NSTimeInterval now=NSProcessInfo.processInfo.systemUptime;
     if(!_fpsStart){_fpsStart=now;_frames=0;}_frames++;if(now-_fpsStart>=.5){_observedFPS=_frames/(now-_fpsStart);_frames=0;_fpsStart=now;}
-    if(!*static_cast<bool*>(object_unbox(loaded))||(_sceneHandle!=-1&&current!=_sceneHandle)){[self pause:@"Flame v8: scene changed; enable after loading"];return;}
+    if(!*static_cast<bool*>(object_unbox(loaded))||(_sceneHandle!=-1&&current!=_sceneHandle)){[self pause:@"Flame v9: scene changed; enable after loading"];return;}
     if(_sceneHandle==-1){_sceneHandle=current;_settledAfter=now+5;}
-    if(now<_settledAfter){_status=@"Flame v8: waiting for scene";[self setNeedsDisplay];return;}
+    if(now<_settledAfter){_status=@"Flame v9: waiting for scene";[self setNeedsDisplay];return;}
     if(now<_retryAfter)return;
     if(!_extras.ready){if(!_extras.init())_extras.status=@"Экспериментальные API недоступны";}
     if(now>=_nextDiscovery){[self discover:ok];_nextDiscovery=now+0.5;if(!ok){[self waitForPlayers:@"Ожидание объектов матча" now:now];return;}}
@@ -370,7 +412,7 @@ struct Api {
     int anchorActor=anchor?[self integer:invoke(_api.actor,anchor,nullptr,ok)]:-1;
     NSString* anchorTeam=anchor?[[self string:invoke(_api.team,anchor,nullptr,ok)] lowercaseString]:@"";
     V3 cameraPos{};BOOL haveCameraPos=NO;P cameraTransform=nullptr;
-    if(_showDistance||_aim||_maxDistance>0){cameraTransform=invoke(_api.tr,camera,nullptr,ok);if(cameraTransform)haveCameraPos=[self position:cameraTransform result:cameraPos ok:ok];}
+    if(_showDistance||_aim||_trigger||_thirdPerson||_maxDistance>0){cameraTransform=invoke(_api.tr,camera,nullptr,ok);if(cameraTransform)haveCameraPos=[self position:cameraTransform result:cameraPos ok:ok];}
     if(!ok){[self waitForPlayers:@"Ожидание данных матча" now:now];return;}
     P localController=nullptr;
     if(!watching)for(const Target& t:_targets)if(t.actor>=0&&t.actor==localActor){
@@ -388,8 +430,51 @@ struct Api {
             if(now>=_nextPlayerProbe){_nextDiscovery=0;_nextPlayerProbe=now+.5;}
         }
     }
+    if(_trail&&localController){
+        while(!_trailPoints.empty()&&now-_trailPoints.front().time>_trailTime)_trailPoints.pop_front();
+        if(_trailPoints.empty()||now-_trailPoints.back().time>=.05){
+            bool trailOK=true;
+            P transform=invoke(_api.tr,localController,nullptr,trailOK);V3 point{};
+            if(transform&&[self position:transform result:point ok:trailOK]){
+                point.y+=.08f;
+                if(!_trailPoints.empty()&&FlameDistanceSquared(point,_trailPoints.back().position)>64)_trailPoints.clear();
+                if(_trailPoints.empty()||FlameDistanceSquared(point,_trailPoints.back().position)>.0064){
+                    _trailPoints.push_back({point,now});
+                }
+            }
+        }
+    }
+    P viewCamera=camera;
+    if(_extras.ready&&_thirdPerson&&localController&&haveCameraPos){
+        if(P view=_thirdView.sample(_extras,_sceneVisuals,camera,cameraTransform,cameraPos,_cameraDistance))viewCamera=view;
+    }else if(_thirdView.object)_thirdView.clear(_extras);
+    if(_extras.ready&&_nextAgent&&localController){
+        _nextAgent=NO;
+        bool agentOK=true;
+        P animator=invoke(_api.animator,localController,nullptr,agentOK);
+        P skeleton=[self isAlive:animator ok:agentOK]?invoke(_api.skeleton,animator,nullptr,agentOK):nullptr;
+        if([self isAlive:skeleton ok:agentOK])_extras.nextAgent(skeleton,_api.get,agentOK);
+    }
+    if(_extras.ready&&(_skyTint||_sceneLight||_playerTint||_sceneVisuals.status.length)){
+        bool renderOK=true;
+        P body=nullptr,lod=nullptr;
+        if(_playerTint&&localController&&now>=_sceneVisuals.nextTick){
+            P animator=invoke(_api.animator,localController,nullptr,renderOK);
+            P skeleton=[self isAlive:animator ok:renderOK]?invoke(_api.skeleton,animator,nullptr,renderOK):nullptr;
+            if([self isAlive:skeleton ok:renderOK]){
+                body=invoke(_api.body,skeleton,nullptr,renderOK);
+                if(_api.bodyLod)lod=invoke(_api.bodyLod,skeleton,nullptr,renderOK);
+            }
+        }
+        _sceneVisuals.tick(_extras,now,_skyTint,_skyHue,_sceneLight,_sceneHour,_playerTint,_playerHue,body,lod);
+    }
     BOOL fireHeld=NO;
     if(_extras.ready&&localController){
+        if((_trigger||_bunnyHop)&&!_input.ready)_input.init(_extras,_sceneVisuals);
+        if(_bunnyHop&&now>=_bunnyProbe){
+            _input.bunny(_sceneVisuals);
+            _bunnyProbe=now+.2;
+        }
         bool armsOK=true;
         P ac=invoke(_extras.arms,localController,nullptr,armsOK);
         if([self isAlive:ac ok:armsOK]){
@@ -410,9 +495,8 @@ struct Api {
                 if(!stepOK)_extras.ammoObserved=-1;
             }
             if(!_cosmeticsFault&&now>=_observeAfter){
-                bool skinOK=true,previewStarted=false;
-                bool handled=_extras.cosmetics(ac,_skinRequest,_api.get,now,previewStarted,skinOK);
-                if(previewStarted)_panel.hidden=YES;
+                bool skinOK=true;
+                bool handled=_extras.cosmetics(ac,_skinRequest,_api.get,now,skinOK);
                 if(!skinOK){
                     _cosmeticsFault=YES;_skinRequest=nil;
                     _extras.status=@"Скинченджер остановлен для этого персонажа после ошибки игры";
@@ -420,7 +504,27 @@ struct Api {
                 _observeAfter=now+.25;
                 [_menu updateWeapon:_extras.observedWeapon name:_extras.observedName skin:_extras.observedSkin];
             }
-            if(_aim&&!_aimFault&&_controls&&_panel.hidden){
+            if(_trigger&&!_spin&&viewCamera==camera&&_panel.hidden&&haveCameraPos&&anchorTeam.length){
+                int hit=_input.actor(_extras,_sceneVisuals,ac,cameraTransform,cameraPos,now);
+                if(hit!=-2){
+                    bool enemy=false;
+                    if(hit>0&&hit!=localActor){
+                        for(const Target& target:_targets)if(target.actor==hit&&target.network){
+                            bool hitOK=true;P player=gchandle_get_target(target.player);
+                            P network=gchandle_get_target(target.network);
+                            if([self isAlive:player ok:hitOK]){
+                                P dead=invoke(_api.dead,player,nullptr,hitOK);
+                                NSString* team=network?[[self string:invoke(_api.team,network,nullptr,hitOK)] lowercaseString]:@"";
+                                enemy=hitOK&&dead&&!*static_cast<bool*>(object_unbox(dead))&&team.length&&![team isEqual:anchorTeam];
+                            }
+                            break;
+                        }
+                    }
+                    if(enemy)_input.fire(ac,hit,now,_triggerDelay);
+                    else _input.resetTrigger();
+                }
+            }else _input.resetTrigger();
+            if(_aim&&!_spin&&viewCamera==camera&&!_aimFault&&_controls&&_panel.hidden){
                 bool inputOK=true;P c=gchandle_get_target(_controls);
                 if([self isAlive:c ok:inputOK])fireHeld=_extras.fireHeld(c,inputOK);
             }
@@ -431,6 +535,24 @@ struct Api {
     BOOL aimActive=fireHeld&&(now-_fireStarted)*1000>=_aimDelay;
     if(_extras.ready){bool fovOK=true;if(_fovOverride)_extras.fieldOfView(camera,_fovValue,fovOK);else _extras.restoreFov();if(!fovOK){_fovOverride=NO;[_menu setRuntimeOption:Fov value:NO];_extras.restoreFov();}}
 
+    if(_extras.ready&&_spin&&localController&&_panel.hidden){
+        bool spinOK=true;
+        float dt=fmax(.001,fmin(.05,_displayLink.targetTimestamp-_displayLink.timestamp));
+        _extras.spin(localController,_spinSpeed*dt,spinOK);
+        if(!spinOK){_spin=NO;[_menu setRuntimeOption:Spin value:NO];}
+    }
+    if(_trail){
+        bool trailOK=true,previousVisible=false;CGPoint previous{};
+        for(const TrailPoint& sample:_trailPoints){
+            CGPoint point{};
+            bool visible=[self project:sample.position camera:viewCamera scale:scale height:h result:point ok:trailOK];
+            if(visible&&previousVisible){
+                float opacity=std::clamp(1.f-(float)(now-sample.time)/_trailTime,0.f,1.f);
+                _trailSegments.push_back({{previous,point,true},opacity});
+            }
+            previousVisible=visible;previous=point;
+        }
+    }
     V3 aimTarget{};BOOL haveAimTarget=NO;float nearest=_aimRadius*_aimRadius;
     size_t filtered=0,unknown=0,visible=0;
     for(const Target& target:_targets){
@@ -442,9 +564,15 @@ struct Api {
         BOOL known=team.length>0&&anchorTeam.length>0,enemy=known&&![team isEqualToString:anchorTeam];
         if(_onlyEnemies&&!known){unknown++;continue;}if(_onlyEnemies&&!enemy){filtered++;continue;}
         if(_maxDistance>0&&haveCameraPos){P transform=invoke(_api.tr,player,nullptr,ok);V3 pos;if(transform&&[self position:transform result:pos ok:ok]){double dx=pos.x-cameraPos.x,dy=pos.y-cameraPos.y,dz=pos.z-cameraPos.z;if(dx*dx+dy*dy+dz*dz>_maxDistance*_maxDistance)continue;}}
-        if(aimActive&&enemy&&haveCameraPos&&target.head){
-            P head=gchandle_get_target(target.head);V3 world;CGPoint point;
-            if([self isAlive:head ok:ok]&&[self position:head result:world ok:ok]&&[self project:world camera:camera scale:scale height:h result:point ok:ok]){
+        if(aimActive&&enemy&&haveCameraPos){
+            uint32_t points[]={target.head,
+                target.chest>=0?target.bones[target.chest].handle:0,
+                target.pelvis>=0?target.bones[target.pelvis].handle:0};
+            for(int i=0;i<3&&ok;i++){
+                if((_aimPoint!=3&&_aimPoint!=i)||!points[i])continue;
+                P bone=gchandle_get_target(points[i]);V3 world;CGPoint point;
+                if(![self isAlive:bone ok:ok]||![self position:bone result:world ok:ok]||
+                    ![self project:world camera:camera scale:scale height:h result:point ok:ok])continue;
                 float dx=point.x-CGRectGetMidX(self.bounds),dy=point.y-CGRectGetMidY(self.bounds),d=dx*dx+dy*dy;
                 if(d<nearest&&(_aimDistance==0||FlameDistanceSquared(world,cameraPos)<=_aimDistance*_aimDistance)){
                     nearest=d;aimTarget=world;haveAimTarget=YES;
@@ -457,7 +585,7 @@ struct Api {
             for(size_t j=0;j<target.bones.size()&&ok;j++){
                 RootScope boneRoots;P transform=gchandle_get_target(target.bones[j].handle);if(![self isAlive:transform ok:ok])continue;
                 V3 pos;if(![self position:transform result:pos ok:ok])continue;CGPoint p;
-                if(![self project:pos camera:camera scale:scale height:h result:p ok:ok]){nearPlane=YES;continue;}
+                if(![self project:pos camera:viewCamera scale:scale height:h result:p ok:ok]){nearPlane=YES;continue;}
                 points[j]=p;valid[j]=true;projected++;left=fmin(left,p.x);right=fmax(right,p.x);top=fmin(top,p.y);bottom=fmax(bottom,p.y);
             }
         }
@@ -465,14 +593,14 @@ struct Api {
         if(nearPlane)continue;
         if(projected<4||right<=left||bottom<=top){
             P transform=invoke(_api.tr,player,nullptr,ok);V3 pos;CGPoint p;
-            if((_showBoxes||_showSkeleton)&&transform&&[self position:transform result:pos ok:ok]&&[self project:pos camera:camera scale:scale height:h result:p ok:ok]&&CGRectContainsPoint(self.bounds,p))_dots.push_back(p);
+            if((_showBoxes||_showSkeleton)&&transform&&[self position:transform result:pos ok:ok]&&[self project:pos camera:viewCamera scale:scale height:h result:p ok:ok]&&CGRectContainsPoint(self.bounds,p))_dots.push_back(p);
             continue;
         }
         // Padding only covers skin around actual projected joints, not animation-wide renderer bounds.
         CGFloat padX=fmax(2,(right-left)*0.04),padY=fmax(3,(bottom-top)*0.07);
         CGRect box=CGRectMake(left-padX,top-padY,right-left+2*padX,bottom-top+2*padY);
         if(!CGRectIntersectsRect(box,self.bounds))continue;visible++;
-        if(_headCircle&&target.head){P head=gchandle_get_target(target.head);V3 world;CGPoint point;if([self isAlive:head ok:ok]&&[self position:head result:world ok:ok]&&[self project:world camera:camera scale:scale height:h result:point ok:ok])_headMarkers.push_back({point,fmax(2,fmin(12,box.size.height*.055)),(bool)enemy});}
+        if(_headCircle&&target.head){P head=gchandle_get_target(target.head);V3 world;CGPoint point;if([self isAlive:head ok:ok]&&[self position:head result:world ok:ok]&&[self project:world camera:viewCamera scale:scale height:h result:point ok:ok])_headMarkers.push_back({point,fmax(2,fmin(12,box.size.height*.055)),(bool)enemy});}
         if(_showSkeleton)for(size_t j=0;j<target.bones.size();j++){
             int parent=target.bones[j].parent;if(parent>=0&&parent<(int)points.size()&&valid[j]&&valid[parent])_segments.push_back({points[j],points[parent],(bool)enemy});
         }
@@ -493,10 +621,12 @@ struct Api {
         if(!aimOK){_aimFault=YES;_extras.status=@"AIM приостановлен для этого персонажа после ошибки игры";}
     }
     NSString* diagnostics=_extras.summary();
+    if(_input.status.length)diagnostics=[diagnostics stringByAppendingFormat:@"  %@",_input.status];
+    if(_sceneVisuals.status.length)diagnostics=[diagnostics stringByAppendingFormat:@"  %@",_sceneVisuals.status];
     if(_noSpread&&localController&&!_extras.spreadFields)
         diagnostics=[diagnostics stringByAppendingString:@"  No Spread: нет подтверждённых изменений"];
     _extraLabel.text=[NSString stringWithFormat:@"%@\n%@",_extras.status,diagnostics];
-    _status=[NSString stringWithFormat:@"v8: %zu players · %@ team %@\nrigs %zu/%zu · bones %zu · missing %zu\nallies filtered %zu · unknown teams %zu",visible,watching?@"watched":@"local",anchorTeam.length?anchorTeam:@"unknown",_rigs,_targets.size(),_boneCount,_missingRig,filtered,unknown];
+    _status=[NSString stringWithFormat:@"v9: %zu players · %@ team %@\nrigs %zu/%zu · bones %zu · missing %zu\nallies filtered %zu · unknown teams %zu",visible,watching?@"watched":@"local",anchorTeam.length?anchorTeam:@"unknown",_rigs,_targets.size(),_boneCount,_missingRig,filtered,unknown];
     [self setNeedsDisplay];
 }
 - (UIColor*)color:(BOOL)enemy{return enemy?FlameAccent(_accent):[UIColor colorWithRed:0.35 green:1 blue:0.45 alpha:1];}
@@ -518,6 +648,12 @@ struct Api {
         if(radius>0)CGContextDrawRadialGradient(context,_vignetteGradient,center,radius*.4,center,radius,0);
     }
     if(_filled)for(const Item& item:_items){[[[self color:item.enemy] colorWithAlphaComponent:.09]setFill];UIRectFill(item.box);}
+    for(const auto& entry:_trailSegments){
+        UIBezierPath* path=[UIBezierPath bezierPath];
+        [path moveToPoint:entry.first.a];[path addLineToPoint:entry.first.b];
+        [[FlameAccent(_accent) colorWithAlphaComponent:entry.second]setStroke];
+        path.lineWidth=2.2;path.lineCapStyle=kCGLineCapRound;[path stroke];
+    }
     [self stroke:_tracers width:fmax(.6,_lineWidth*.65)];[self stroke:_segments width:_lineWidth];
     for(const Item& item:_items){
         if(_showBoxes){UIBezierPath* p=[self boxPath:item.box];
@@ -537,8 +673,6 @@ struct Api {
         [[UIBezierPath bezierPathWithOvalInRect:CGRectMake(x-1.5,y-1.5,3,3)]fill];
     }
     CGContextRestoreGState(context);
-    if(_enabled&&_panel.hidden&&_extras.previewUntil>NSProcessInfo.processInfo.systemUptime)
-        [@"Превью · до 6 секунд" drawAtPoint:CGPointMake(48,55) withAttributes:@{NSForegroundColorAttributeName:UIColor.whiteColor,NSFontAttributeName:[UIFont boldSystemFontOfSize:12]}];
     if(_enabled&&_showFps)[[NSString stringWithFormat:@"ESP %.0f FPS",_observedFPS]drawAtPoint:CGPointMake(self.bounds.size.width-116,19) withAttributes:@{NSForegroundColorAttributeName:FlameAccent(_accent),NSFontAttributeName:[UIFont boldSystemFontOfSize:11]}];
     if(_debug||!_enabled||!_apiReady||(_onlyEnemies&&_items.empty()))[_status drawInRect:CGRectMake(48,18,480,55) withAttributes:@{NSForegroundColorAttributeName:UIColor.cyanColor,NSFontAttributeName:[UIFont systemFontOfSize:11]}];
 }

@@ -13,7 +13,17 @@
     assert([NSPropertyListSerialization propertyList:FlameDefaultConfig() isValidForFormat:NSPropertyListBinaryFormat_v1_0]);
     CGRect bounds=self.view.bounds;CGFloat width=fmin(740,bounds.size.width-42),height=fmin(355,bounds.size.height-30);
     FlameMenu* menu=[[FlameMenu alloc]initWithFrame:CGRectMake((bounds.size.width-width)/2,(bounds.size.height-height)/2,width,height) config:FlameDefaultConfig()];menu.delegate=self;[self.view addSubview:menu];
-    [menu updateWeapon:9 name:@"AK-47" skin:@""];[menu showTab:[NSUserDefaults.standardUserDefaults integerForKey:@"FlamePreviewTab"]];
+    [menu updateWeapon:9 name:@"AK-47" skin:@""];
+    NSInteger tab=[NSUserDefaults.standardUserDefaults integerForKey:@"FlamePreviewTab"];
+    if(tab==3){
+        NSUInteger artwork=0;
+        for(NSDictionary* weapon in FlameCatalog()[@"weapons"])for(NSDictionary* skin in weapon[@"skins"]){
+            assert(FlameSkinImage(skin[@"key"])!=nil);
+            artwork++;
+        }
+        assert(artwork==[FlameCatalog()[@"skinCount"] unsignedIntegerValue]);
+    }
+    [menu showTab:tab];
     menu.statusLabel.text=@"Предпросмотр UIKit · данные каталога из IPA · игровые функции здесь не выполняются";
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW,2*NSEC_PER_SEC),dispatch_get_main_queue(),^{
         UIGraphicsImageRenderer* renderer=[[UIGraphicsImageRenderer alloc]initWithBounds:self.view.bounds];UIImage* image=[renderer imageWithActions:^(UIGraphicsImageRendererContext* ctx){[self.view drawViewHierarchyInRect:self.view.bounds afterScreenUpdates:YES];}];

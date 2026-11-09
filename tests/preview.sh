@@ -23,7 +23,7 @@ test -n "$device"
 xcrun simctl boot "$device" || true
 xcrun simctl bootstatus "$device" -b
 xcrun simctl install "$device" build/MenuPreview.app
-for entry in '0:visual' '3:skins'; do
+for entry in '0:visual' '1:aim' '3:skins'; do
   tab=${entry%%:*}
   name=${entry##*:}
   xcrun simctl terminate "$device" com.example.flame.preview || true

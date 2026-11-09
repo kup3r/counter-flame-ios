@@ -1,4 +1,4 @@
-# Flame v8
+# Flame v9
 
 A native arm64 in-process module for the supplied CounterFlame 1.4.1 build 7 IPA. No fixed game addresses or hard-coded field offsets. Menu and additional gameplay controls need on-device testing.
 
@@ -25,7 +25,17 @@ SkinCatalog.json is generated from the supplied WeaponId metadata constants and 
 
 Search supports weapon and finish names; category tabs narrow the list. Applying a material requires that exact selected weapon ID in hand. It does not replace AK gameplay with AWP parameters. Knife-model replacement is separate and works from any knife held by the living local player, without a CT-only restriction. Requested model configurations must report the selected ID before the normal game CreateWeapon routine is invoked. The seven-argument signature is checked at runtime. A selected knife material goes to CreateWeapon with the model. If the equipped-key readback differs, the module can try SetSkin on the equipped knife. Normal game routines may synchronize appearance; the module does not grant persistent ownership.
 
-The requested knife and skin keys are kept in memory for the game session and reapplied when a new local character equips the appropriate weapon. Death and spectating release character-specific state while leaving the master switch enabled within the same scene. Preview temporarily requests a material on the matching held weapon for six seconds, with restoration attempted on the original weapon instance. Material requests and delayed equipped-key readback distinguish a request from confirmation. Original nonempty material keys can be restored. For an original standard material, the module requests the original weapon configuration and preserves separately detected live ammunition counters. Restore/material results still require device confirmation. Model/animation/material correctness is not proven by compilation.
+The requested knife and skin keys are kept in memory for the game session and reapplied when a new local character equips the appropriate weapon. Death and spectating release character-specific state while leaving the master switch enabled within the same scene. The Skins tab shows 330 browsable, searchable inventory cards with the finish name below its image. 329 thumbnails are extracted from the original 1.4.1 build 7 sprites. MAC-10 Neon Rider uses the matching Steam inventory image because the shipped resources have no matching sprite. Browsing the cards works with the module switched off. Material requests and delayed equipped-key readback distinguish a request from confirmation. Original nonempty material keys can be restored. For an original standard material, the module requests the original weapon configuration and preserves separately detected live ammunition counters. Restore/material results still require device confirmation. Model/animation/material correctness is not proven by compilation.
+
+## v9 scene and input options
+
+- AIM selects the head, chest, pelvis, or the available joint closest to the crosshair. Body joints are matched by names in the live skeleton.
+- Visual offers a fading local trail, skybox tint on supported material shaders, a time-of-day lighting slider, fixed/RGB local player tint, and a button to cycle to another loaded agent from the same team.
+- Misc adds a local third-person display camera and a continuous yaw control. The display camera leaves the game's first-person camera transform in place. Its rear offset is limited by a linecast. Third-person display and yaw rotation suspend automatic targeting while active.
+- TriggerBot traces with the weapon's game layer mask and requires the first hit to resolve to a living opponent. It uses ArmsController.Shoot after a configurable dwell and checks the game's own shooting predicates. Bunnyhop uses the game's held-jump behavior and restores the two local settings when disabled.
+- The sticker catalog lists 116 kits read from the game bundle. A selected slot is sent to WeaponController.ShowStickers for the held weapon, using a checked StickerData list and preserving readable entries in other slots. This is a local appearance request.
+
+Native gameplay paths remain subject to iPhone testing. AutoWin, Plant Anywhere, Defuse Anywhere and opponent-facing Anti Aim are absent. No game binary or metadata dump is committed.
 
 ## Validation
 

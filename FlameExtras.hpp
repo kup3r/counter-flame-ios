@@ -13,6 +13,8 @@ struct State : FlamePatch::Memory {
     void (*write)(P,P,P)=nullptr;
     P (*string_new)(const char*)=nullptr;
     P (*class_from_type)(P)=nullptr;
+    P (*object_new)(P)=nullptr;
+    P (*object_get_class)(P)=nullptr;
     P (*method_return_type)(P)=nullptr;
     bool (*class_is_value)(P)=nullptr;
     P arms=nullptr,lock=nullptr,current=nullptr,recoil=nullptr,isKnife=nullptr;
@@ -31,10 +33,6 @@ struct State : FlamePatch::Memory {
     int skinWeapon=-1;
     bool skinVerified=false;
     bool knifeMaterialFallback=false,knifeMaterialTried=false;
-    uint32_t previewOwner=0;
-    NSString* previewKey=nil;
-    NSString* previewOriginal=nil;
-    double previewUntil=0;
     P movement=nullptr,speedGet=nullptr,ammoCurrent=nullptr,ammoConfig=nullptr,ammoMag=nullptr,ammoReserve=nullptr,ammoSet=nullptr;
     P nextSpread=nullptr,air=nullptr,fovGet=nullptr,fovSet=nullptr,unityAlive=nullptr,currentController=nullptr,equippedSkin=nullptr,displayName=nullptr;
     uint32_t fovOwner=0;float fovBefore=NAN,fovApplied=NAN;
@@ -54,6 +52,7 @@ struct State : FlamePatch::Memory {
         EXTRA_LOAD(field,"class_get_field_from_name");EXTRA_LOAD(field_type,"field_get_type");EXTRA_LOAD(field_flags,"field_get_flags");
         EXTRA_LOAD(read,"field_get_value");EXTRA_LOAD(write,"field_set_value");EXTRA_LOAD(string_new,"string_new");
         EXTRA_LOAD(method_return_type,"method_get_return_type");
+        EXTRA_LOAD(object_new,"object_new");EXTRA_LOAD(object_get_class,"object_get_class");
         EXTRA_LOAD(class_from_type,"class_from_type");EXTRA_LOAD(class_is_value,"class_is_valuetype");
 #undef EXTRA_LOAD
         dlclose(h);if(!field||!field_type||!field_flags||!read||!write||!string_new||!class_from_type||!class_is_value)return false;
@@ -191,13 +190,8 @@ struct State : FlamePatch::Memory {
         if(!result&&ok&&loadParameters&&name.length){P key=string_new(name.UTF8String);if(roots)roots->hold(key);P args[]={key};result=invoke(loadParameters,nullptr,args,ok);}
         return result&&ok&&id(invoke(weaponId,result,nullptr,ok))==requested?result:nullptr;
     }
-    void clearPreview(){
-        if(previewOwner)Runtime::gchandle_free(previewOwner);
-        previewOwner=0;previewKey=previewOriginal=nil;previewUntil=0;
-    }
     void resetCosmetics(){
         using namespace Runtime;
-        clearPreview();
         for(const SkinSave& save:skinHistory)gchandle_free(save.parameters);
         skinHistory.clear();
         if(originalKnife)gchandle_free(originalKnife);
@@ -247,29 +241,61 @@ struct State : FlamePatch::Memory {
         }
         status=@"Автоприменение материала выключено для текущего оружия";
     }
-    bool startPreview(P ac,P weapon,NSString* key,double now,bool& ok){
-        if(!setSkin||!equippedSkin||(!observedSkin.length&&(!createWeapon||!ammoCurrent||!ammoConfig||!ammoSet||!ammoMag||!ammoReserve))){
-            status=@"Штатное восстановление после предпросмотра недоступно";return false;
+    void sticker(P weapon,NSInteger kit,NSInteger slot,bool& ok){
+        using namespace Runtime;
+        if(!weapon||kit<=0||slot<0||slot>4||!object_new||!object_get_class)return;
+        P controller=cls("ScarletWork.Weapon","WeaponController");
+        P stickerData=cls("ScarletWork.Stickers","StickerData");
+        P renderers=cls("ScarletWork.Stickers","StickerRenderers");
+        P show=method(controller,"ShowStickers",2);
+        P currentGet=method(renderers,"get_Stickers",0);
+        P stickersField=typedField(controller,"_stickers","ScarletWork.Stickers.StickerRenderers");
+        if(!returns(show,"System.Void")||!currentGet||!stickersField||!stickerData){
+            status=@"Наклейки: игровой API не подтверждён";return;
         }
-        if([observedSkin isEqualToString:key]){
-            status=@"Этот материал уже отображается в игре";return true;
+        P type=method_get_param(show,0);
+        char* name=type_get_name(type);
+        bool isList=name&&strstr(name,"System.Collections.Generic.List")&&strstr(name,"ScarletWork.Stickers.StickerData");
+        if(name)free_(name);
+        P listClass=isList&&parametersMatch(show,{"<reference>","System.Int32"})?class_from_type(type):nullptr;
+        P add=method(listClass,"Add",1),construct=method(listClass,".ctor",0),stickerConstruct=method(stickerData,".ctor",0);
+        P kitField=typedField(stickerData,"kit","System.Int32"),slotField=typedField(stickerData,"slot","System.Int32");
+        if(!returns(add,"System.Void")||class_from_type(method_get_param(add,0))!=stickerData||
+            !returns(construct,"System.Void")||!returns(stickerConstruct,"System.Void")||!kitField||!slotField){
+            status=@"Наклейки: коллекция игры недоступна";return;
         }
-        expectedSkin=nil;requestSkin(ac,key,now,ok);
-        if(!ok||!expectedSkin)return false;
-        expectedSkin=nil;
-        previewOwner=Runtime::gchandle_new(weapon,true);
-        previewOriginal=observedSkin;previewKey=key;previewUntil=now+6;
-        status=@"Предпросмотр запрошен на 6 секунд";
-        return true;
+        P existing=objectField(weapon,stickersField);
+        P old=existing?invoke(currentGet,existing,nullptr,ok):nullptr;
+        P list=object_new(listClass),data=object_new(stickerData);
+        if(!list||!data||!ok)return;
+        if(roots){roots->hold(list);roots->hold(data);}
+        invoke(construct,list,nullptr,ok);
+        if(old){
+            P actual=object_get_class(old);
+            P countMethod=method(actual,"get_Count",0);
+            P getItem=method(actual,"get_Item",1,"System.Int32");
+            if(!returns(countMethod,"System.Int32")||!returns(getItem,"ScarletWork.Stickers.StickerData")){
+                status=@"Наклейки: не удалось прочитать текущие слоты";return;
+            }
+            P countBox=invoke(countMethod,old,nullptr,ok);
+            int count=countBox?*static_cast<int*>(object_unbox(countBox)):-1;
+            if(count<0||count>12)return;
+            for(int i=0;i<count&&ok;i++){
+                P idx[]={&i};P item=invoke(getItem,old,idx,ok);
+                if(!item)continue;
+                int oldSlot=-1;read(item,slotField,&oldSlot);
+                if(oldSlot!=slot){P args[]={item};invoke(add,list,args,ok);}
+            }
+        }
+        invoke(stickerConstruct,data,nullptr,ok);
+        if(!ok)return;
+        int kitValue=(int)kit,slotValue=(int)slot,mip=0;
+        write(data,kitField,&kitValue);write(data,slotField,&slotValue);
+        P newArgs[]={data};invoke(add,list,newArgs,ok);
+        P args[]={list,&mip};invoke(show,weapon,args,ok);
+        if(ok)status=[NSString stringWithFormat:@"Наклейка запрошена для слота %ld",(long)slot+1];
     }
-    void finishPreview(P ac,P parameters,double now,bool& ok){
-        if([observedSkin isEqualToString:previewKey]){
-            if(previewOriginal.length)requestSkin(ac,previewOriginal,now,ok);
-            else {equipPreservingAmmo(ac,parameters,ok);status=@"Предпросмотр завершён. Запрошен исходный материал.";}
-        }else status=@"Предпросмотр завершён. Ключ материала не был подтверждён.";
-        clearPreview();
-    }
-    bool cosmetics(P ac,NSDictionary* request,P arrayGet,double now,bool& previewStarted,bool& ok){
+    bool cosmetics(P ac,NSDictionary* request,P arrayGet,double now,bool& ok){
         using namespace Runtime;
         if(!cosmeticArms||gchandle_get_target(cosmeticArms)!=ac){
             resetCosmetics();cosmeticArms=gchandle_new(ac,true);
@@ -296,15 +322,13 @@ struct State : FlamePatch::Memory {
         NSDictionary* selected=request[@"weapon"];
         NSNumber* selectedID=selected[@"id"];
         NSString* key=request[@"skin"][@"key"];
-        if(previewOwner&&gchandle_get_target(previewOwner)==weapon){
-            if(now>=previewUntil||request){finishPreview(ac,p,now,ok);return false;}
+        if([action isEqual:@"sticker"]){
+            P knife=invoke(isKnife,ac,nullptr,ok);
+            if(!knife||*static_cast<bool*>(object_unbox(knife)))status=@"Выбери огнестрельное оружие";
+            else sticker(weapon,[request[@"skin"][@"id"] integerValue],[request[@"skin"][@"slot"] integerValue],ok);
             return true;
         }
-        if([action isEqual:@"previewSkin"]){
-            if(previewOwner){status=@"Для завершения предпросмотра возьми прежнее оружие";return true;}
-            if(selectedID&&[selectedID intValue]==held&&key.length)previewStarted=startPreview(ac,weapon,key,now,ok);
-            return true;
-        }
+
         if([action isEqual:@"restoreSkin"]){
             bool customKnife=desiredSkins[@(held)]&&desiredKnife&&held==[desiredKnife[@"id"] intValue];
             [desiredSkins removeObjectForKey:@(held)];
@@ -457,6 +481,52 @@ struct State : FlamePatch::Memory {
         return value&&*static_cast<bool*>(Runtime::object_unbox(value));
     }
     static float angle(float value){value=fmodf(value+180,360);if(value<0)value+=360;return value-180;}
+    void spin(P player,float degrees,bool& ok){
+        using namespace Runtime;
+        if(!lock||!playerBody||!goTransform||!euler||!setEuler)return;
+        P owner=invoke(lock,player,nullptr,ok);
+        P body=owner?objectField(owner,playerBody):nullptr;
+        P transform=body?invoke(goTransform,body,nullptr,ok):nullptr;
+        if(!transform)return;
+        P box=invoke(euler,transform,nullptr,ok);
+        if(!box||!ok)return;
+        V3 angles{};
+        memcpy(&angles,object_unbox(box),sizeof(angles));
+        if(!finiteV3(angles))return;
+        angles.y=angle(angles.y+degrees);
+        P args[]={&angles};invoke(setEuler,transform,args,ok);
+    }
+    void nextAgent(P skeleton,P arrayGet,bool& ok){
+        using namespace Runtime;
+        P type=cls("ScarletWork.Game","AgentDefinition"),skeletonClass=cls("ScarletWork.Game","PlayerSkeleton");
+        P get=method(skeletonClass,"get_Agent",0),set=method(skeletonClass,"SetAgent",1,"ScarletWork.Game.AgentDefinition");
+        P team=method(type,"get_Team",0);
+        uint32_t alignment=0;P teamClass=cls("","Team");
+        if(!type||!findAll||!teamClass||class_value_size(teamClass,&alignment)!=sizeof(int)||
+            !returns(get,"ScarletWork.Game.AgentDefinition")||!returns(set,"System.Void")||!returns(team,"Team")){
+            status=@"Замена агента: игровой API недоступен";return;
+        }
+        P currentAgent=invoke(get,skeleton,nullptr,ok);
+        P side=currentAgent?invoke(team,currentAgent,nullptr,ok):nullptr;
+        int sideValue=side?*static_cast<int*>(object_unbox(side)):0;
+        if(!ok||sideValue<=0){status=@"Замена агента: текущая команда не определена";return;}
+        P typeObject=type_get_object(class_get_type(type));if(roots)roots->hold(typeObject);
+        P args[]={typeObject};P list=invoke(findAll,nullptr,args,ok);
+        if(!list||array_length(list)>256)return;
+        P first=nullptr,next=nullptr;bool passed=false;
+        for(int i=0;i<(int)array_length(list)&&ok;i++){
+            P index[]={&i};P agent=invoke(arrayGet,list,index,ok);
+            if(agent==currentAgent){passed=true;continue;}
+            P side=agent?invoke(team,agent,nullptr,ok):nullptr;
+            if(!side||*static_cast<int*>(object_unbox(side))!=sideValue)continue;
+            if(!first)first=agent;
+            if(passed){next=agent;break;}
+        }
+        if(!next)next=first;
+        if(!next){status=@"Другие агенты этой команды ещё не загружены";return;}
+        P change[]={next};invoke(set,skeleton,change,ok);
+        if(ok)status=@"Модель агента передана локальному скелету";
+    }
     void aim(P pc,P cameraTransform,V3 cameraPos,V3 target,float alpha,float maxStep,bool& ok){
         using namespace Runtime;
         if(!lock||!rotation||!playerBody||!euler||!setEuler||!goTransform){status=@"AIM: нужные методы недоступны";return;}
