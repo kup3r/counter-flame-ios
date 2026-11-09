@@ -179,7 +179,7 @@ struct Api {
     else if([key isEqual:@"fov"])_fovValue=std::clamp(value,60.0,120.0);
     else if([key isEqual:@"maxDistance"])_maxDistance=std::clamp(value,0.0,250.0);
     else if([key isEqual:@"lineWidth"])_lineWidth=std::clamp(value,.6,3.0);
-    else if([key isEqual:@"accent"])_accent=std::clamp((NSInteger)value,(NSInteger)0,(NSInteger)3);
+    else if([key isEqual:@"accent"])_accent=(NSInteger)std::clamp(value,0.0,3.0);
     else if([key isEqual:@"fps"])_displayLink.preferredFramesPerSecond=value<45?30:60;
     [self setNeedsDisplay];
 }
@@ -226,7 +226,7 @@ struct Api {
 }
 - (void)optionChanged:(UISwitch*)s {
     switch(s.tag){
-        case Master:_extras.restoreGameplay();_knifeAction=0;_skinRequest=nil;[self clearTargets];[self clearDrawing];_enabled=s.on;_sceneHandle=-1;_settledAfter=NSProcessInfo.processInfo.systemUptime+5;_fpsStart=0;_frames=0;_displayLink.paused=!_enabled;_status=_enabled?@"Flame v7: waiting for scene":@"Flame v7: ESP off";break;
+        case Master:_extras.status=s.on?@"Включение после проверки сцены":@"Модуль выключен; параметры восстановлены";_extraLabel.text=_extras.status;_extras.restoreGameplay();_knifeAction=0;_skinRequest=nil;[self clearTargets];[self clearDrawing];_enabled=s.on;_sceneHandle=-1;_settledAfter=NSProcessInfo.processInfo.systemUptime+5;_fpsStart=0;_frames=0;_displayLink.paused=!_enabled;_status=_enabled?@"Flame v7: waiting for scene":@"Flame v7: ESP off";break;
         case Enemies:_onlyEnemies=s.on;break;case Boxes:_showBoxes=s.on;break;case Skeleton:_showSkeleton=s.on;break;
         case Health:_showHealth=s.on;break;case Names:_showNames=s.on;break;case Distance:_showDistance=s.on;break;case Tracers:_showTracers=s.on;break;case Debug:_debug=s.on;break;
         case Aim:_aim=s.on;_nextDiscovery=0;break;
@@ -338,7 +338,7 @@ struct Api {
             if(_noRecoil)_extras.noRecoil(ac,extraOK);else _extras.restoreRecoil();
             if(_noSpread)_extras.noSpread(ac,extraOK);else _extras.restoreSpread();
             if(_speedHack)_extras.speed(localController,_speedFactor,extraOK);else _extras.restoreSpeed();
-            if(_unlimitedAmmo)_extras.unlimitedAmmo(ac,extraOK);
+            if(_unlimitedAmmo)_extras.unlimitedAmmo(ac,extraOK);else {_extras.ammoObserved=-1;_extras.ammoMaximum=-1;}
             if(_skinRequest){NSDictionary* request=_skinRequest;_skinRequest=nil;_extras.skinAction(ac,request[@"action"],request[@"weapon"],request[@"skin"][@"key"],_api.get,extraOK);}
             if(_knifeAction){_extras.knife(ac,_knifeAction,_api.get,extraOK);_knifeAction=0;}
             _extras.verifyKnife(ac,extraOK);_extras.verifySkin(ac,extraOK);
@@ -441,4 +441,3 @@ __attribute__((constructor))static void startFlame(){dispatch_async(dispatch_get
         for(UIWindow* window in ((UIWindowScene*)scene).windows)if(window.isKeyWindow){[window addSubview:[[FlameMarkers alloc]initWithFrame:window.bounds]];[timer invalidate];return;}
     }}];
 });}
-

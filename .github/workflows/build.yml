@@ -37,7 +37,7 @@ jobs:
           path: build/FlameMarkers.dylib
   ui_preview:
     needs: build
-    runs-on: macos-15-intel
+    runs-on: macos-latest
     timeout-minutes: 10
     continue-on-error: true
     steps:
@@ -45,8 +45,7 @@ jobs:
       - name: Render menu in iOS simulator
         run: bash tests/preview.sh
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: FlameMenu-UIKit-preview
           path: build/menu-*.png
-
-

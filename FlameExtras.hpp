@@ -99,7 +99,7 @@ struct State : FlamePatch::Memory {
     void speed(P pc,float factor,bool& ok){
         using namespace Runtime;if(!movement||!speedGet)return;P controller=invoke(movement,pc,nullptr,ok);if(!controller)return;
         P f=typedField(cls("","PlayerMovement"),"_speed","System.Single");
-        if(f&&patches.scale(controller,f,std::clamp(factor,1.0f,3.0f),3))speedObserved=scalar(invoke(speedGet,controller,nullptr,ok));
+        if(f)patches.scale(controller,f,std::clamp(factor,1.0f,3.0f),3);speedObserved=scalar(invoke(speedGet,controller,nullptr,ok));
     }
     void unlimitedAmmo(P ac,bool& ok){
         using namespace Runtime;if(!ammoCurrent||!ammoConfig||!ammoSet||!ammoMag||!ammoReserve)return;
@@ -134,7 +134,10 @@ struct State : FlamePatch::Memory {
         return result&&ok&&id(invoke(weaponId,result,nullptr,ok))==requested?result:nullptr;
     }
     void observe(P ac,bool& ok){
-        using namespace Runtime;P p=invoke(current,ac,nullptr,ok);observedWeapon=p?id(invoke(weaponId,p,nullptr,ok)):-1;
+        using namespace Runtime;
+        for(size_t i=0;i<skinHistory.size();){if(gchandle_get_target(skinHistory[i].arms)!=ac){gchandle_free(skinHistory[i].arms);gchandle_free(skinHistory[i].parameters);skinHistory.erase(skinHistory.begin()+i);}else i++;}
+        if(knifeArms&&gchandle_get_target(knifeArms)!=ac)discardKnife();
+        P p=invoke(current,ac,nullptr,ok);observedWeapon=p?id(invoke(weaponId,p,nullptr,ok)):-1;
         if(p&&displayName)observedName=text(invoke(displayName,p,nullptr,ok));
         P weapon=currentController?invoke(currentController,ac,nullptr,ok):nullptr;
         observedSkin=weapon&&equippedSkin?text(invoke(equippedSkin,weapon,nullptr,ok)):@"";
@@ -158,7 +161,8 @@ struct State : FlamePatch::Memory {
         if([action isEqualToString:@"restoreSkin"]){
             for(const SkinSave& save:skinHistory)if(save.weapon==observedWeapon&&gchandle_get_target(save.arms)==ac){
                 if(save.skin.length&&setSkin){P name=string_new(save.skin.UTF8String);if(roots)roots->hold(name);P args[]={name,nullptr};invoke(setSkin,ac,args,ok);expectedSkin=save.skin;verifyAfter=NSProcessInfo.processInfo.systemUptime+1;status=@"Исходный материал запрошен";}
-                else status=@"Исходный скин был стандартным; восстанови модель или смени раунд";return;
+                else if(createWeapon){P original=Runtime::gchandle_get_target(save.parameters);equipPreservingAmmo(ac,original,ok);if(ok){expectedSkin=@"";verifyAfter=NSProcessInfo.processInfo.systemUptime+1;status=@"Исходное оружие пересоздано; проверяю стандартный материал";}}
+                else status=@"Штатное восстановление стандартного материала недоступно";return;
             }status=@"Для текущего оружия ещё нет сохранённого материала";return;
         }
         if(![action isEqualToString:@"skin"]||!key.length)return;
@@ -207,9 +211,9 @@ struct State : FlamePatch::Memory {
     }
     void zeroTransient(P owner,P cls,const char* name){if(!owner)return;P f=typedField(cls,name,"System.Single");if(f){float zero=0;write(owner,f,&zero);}}
     void restoreRecoil(){if(ready)patches.restore(1);}
-    void restoreSpread(){if(ready)patches.restore(2);}
-    void restoreSpeed(){if(ready)patches.restore(3);}
-    void restoreGameplay(){if(ready)patches.restore();restoreFov();}
+    void restoreSpread(){if(ready)patches.restore(2);spreadObserved=NAN;}
+    void restoreSpeed(){if(ready)patches.restore(3);speedObserved=NAN;}
+    void restoreGameplay(){if(ready)patches.restore();restoreFov();spreadObserved=NAN;speedObserved=NAN;ammoObserved=-1;ammoMaximum=-1;}
     void discardKnife(){if(originalKnife)Runtime::gchandle_free(originalKnife);if(knifeArms)Runtime::gchandle_free(knifeArms);originalKnife=0;knifeArms=0;expectedKnife=-1;lastActualKnife=-1;}
     void noRecoil(P ac,bool& ok){
         using namespace Runtime;P knife=invoke(isKnife,ac,nullptr,ok);if(!knife||*static_cast<bool*>(object_unbox(knife)))return;
@@ -267,6 +271,15 @@ struct State : FlamePatch::Memory {
         P args[]={parameters,nullptr,nullptr,&pickup,nullptr,&seed,&owner};
         Runtime::invoke(createWeapon,ac,args,ok);
     }
+    void equipPreservingAmmo(P ac,P parameters,bool& ok){
+        using namespace Runtime;int magazine=-1,reserve=-1;
+        P before=invoke(current,ac,nullptr,ok),config=before&&ammoConfig?invoke(ammoConfig,before,nullptr,ok):nullptr;
+        P live=ammoCurrent?invoke(ammoCurrent,ac,nullptr,ok):nullptr;
+        if(live&&config&&live!=config&&ammoMag&&ammoReserve){magazine=shortValue(invoke(ammoMag,live,nullptr,ok));reserve=shortValue(invoke(ammoReserve,live,nullptr,ok));}
+        equip(ac,parameters,ok);
+        if(ok&&magazine>=0&&reserve>=0&&ammoCurrent&&ammoSet){P after=invoke(ammoCurrent,ac,nullptr,ok),base=ammoConfig?invoke(ammoConfig,parameters,nullptr,ok):nullptr;
+            if(after&&base&&after!=base){P args[]={&magazine,&reserve};invoke(ammoSet,after,args,ok);}}
+    }
     void knife(P ac,int action,P arrayGet,bool& ok){
         using namespace Runtime;
         if(!createWeapon){status=@"Нож: сигнатура CreateWeapon не подтверждена";return;}
@@ -296,4 +309,3 @@ struct State : FlamePatch::Memory {
     }
 };
 }
-

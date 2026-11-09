@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 mkdir -p build/MenuPreview.app
-xcrun --sdk iphonesimulator clang++ -arch x86_64 -mios-simulator-version-min=15.0 -std=c++17 -fobjc-arc tests/MenuPreview.mm -framework UIKit -framework Foundation -framework CoreGraphics -o build/MenuPreview.app/MenuPreview
+xcrun --sdk iphonesimulator clang++ -target "$(uname -m)-apple-ios15.0-simulator" -isysroot "$(xcrun --sdk iphonesimulator --show-sdk-path)" -std=c++17 -fobjc-arc tests/MenuPreview.mm -framework UIKit -framework Foundation -framework CoreGraphics -o build/MenuPreview.app/MenuPreview
 cat > build/MenuPreview.app/Info.plist <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -37,4 +37,3 @@ for entry in '0:visual' '3:skins'; do
   rm -f "$container/tmp/Flame-menu.png"
 done
 xcrun simctl shutdown "$device"
-

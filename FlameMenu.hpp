@@ -61,6 +61,7 @@ static UIColor* FlameAccent(NSInteger index){switch(index){case 1:return [UIColo
     [self label:text frame:CGRectMake(x,y,width,20) size:11 bold:YES parent:parent];UIView* line=[[UIView alloc]initWithFrame:CGRectMake(x,y+23,width,1)];line.backgroundColor=[UIColor colorWithRed:.68 green:.75 blue:.72 alpha:1];[parent addSubview:line];
 }
 - (UISwitch*)option:(NSInteger)tag title:(NSString*)title x:(CGFloat)x y:(CGFloat)y width:(CGFloat)width parent:(UIView*)parent{
+    UIButton* row=[UIButton buttonWithType:UIButtonTypeCustom];row.frame=CGRectMake(x,y,width,30);row.tag=1000+tag;[row addTarget:self action:@selector(toggleRow:) forControlEvents:UIControlEventTouchUpInside];[parent addSubview:row];
     [self label:title frame:CGRectMake(x,y,width-44,28) size:12 bold:NO parent:parent];UISwitch* toggle=[[UISwitch alloc]initWithFrame:CGRectMake(x+width-49,y,51,31)];toggle.transform=CGAffineTransformMakeScale(.72,.72);toggle.tag=tag;
     toggle.on=[_config[@"options"][FlameOptionKey(tag)] boolValue];toggle.onTintColor=FlameAccent(0);[toggle addTarget:self action:@selector(changeOption:) forControlEvents:UIControlEventValueChanged];[parent addSubview:toggle];_switches[@(tag)]=toggle;return toggle;
 }
@@ -146,6 +147,7 @@ static UIColor* FlameAccent(NSInteger index){switch(index){case 1:return [UIColo
     next.x=fmax(self.bounds.size.width/2,fmin(self.superview.bounds.size.width-self.bounds.size.width/2,next.x));next.y=fmax(self.bounds.size.height/2,fmin(self.superview.bounds.size.height-self.bounds.size.height/2,next.y));self.center=next;
 }
 - (void)changeOption:(UISwitch*)s{_config[@"options"][FlameOptionKey(s.tag)]=@(s.on);[self.delegate flameSetOption:s.tag value:s.on];[self refreshPreview];}
+- (void)toggleRow:(UIButton*)row{UISwitch* s=_switches[@(row.tag-1000)];[s setOn:!s.on animated:YES];[self changeOption:s];}
 - (void)changeSlider:(UISlider*)s{NSString* key=_sliderKeys[@(s.tag)];_config[key]=@(s.value);[self refreshValue:key];[self.delegate flameSetNumber:key value:s.value];}
 - (void)changeColor:(UISegmentedControl*)s{_config[@"accent"]=@(s.selectedSegmentIndex);[self.delegate flameSetNumber:@"accent" value:s.selectedSegmentIndex];[self refreshPreview];}
 - (void)changeFPS:(UISegmentedControl*)s{double value=s.selectedSegmentIndex==0?30:60;_config[@"fps"]=@(value);[self.delegate flameSetNumber:@"fps" value:value];}
@@ -197,4 +199,3 @@ static UIColor* FlameAccent(NSInteger index){switch(index){case 1:return [UIColo
 - (void)configAction:(UIButton*)b{NSArray* actions=@[@"save",@"load",@"reset",@"stop"];[self.delegate flameConfigAction:actions[b.tag-400]];}
 - (BOOL)textFieldShouldReturn:(UITextField*)textField{[textField resignFirstResponder];return YES;}
 @end
-

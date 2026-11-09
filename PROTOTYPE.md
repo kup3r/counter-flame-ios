@@ -25,7 +25,7 @@ SkinCatalog.json is generated from the supplied WeaponId metadata constants and 
 
 Search supports weapon and finish names; category tabs narrow the list. Applying a material requires that exact selected weapon ID in hand. It does not replace AK gameplay with AWP parameters. Knife-model replacement is separate and works from any knife held by the living local player, without a CT-only restriction. Requested model configurations must report the selected ID before the normal game CreateWeapon routine is invoked. The seven-argument signature is checked at runtime. Normal game routines may synchronize appearance; the module does not grant persistent ownership.
 
-Material requests and delayed equipped-key readback distinguish a request from confirmation. Original nonempty material keys can be restored. A standard/default material without an explicit key may require restoring the knife model or changing round. Model/animation/material correctness is not proven by compilation.
+Material requests and delayed equipped-key readback distinguish a request from confirmation. Original nonempty material keys can be restored. For an original standard material, the module requests the original weapon configuration and preserves separately detected live ammunition counters. Restore/material results still require device confirmation. Model/animation/material correctness is not proven by compilation.
 
 ## Validation
 
