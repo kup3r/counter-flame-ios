@@ -7,7 +7,7 @@
 #include <utility>
 #include <unordered_map>
 
-// In-process prototype. No fixed offsets, hooks, or writes to game state.
+// In-process IL2CPP module. Runtime names and typed fields; no fixed offsets.
 namespace Runtime {
 using P = void*;
 P (*domain_get)();
@@ -86,7 +86,7 @@ P invoke(P m,P self,P* args,bool& ok) {
     if(!ok) return nullptr;
     if(!m){ok=false;return nullptr;}
     P exception=nullptr; P result=runtime_invoke(m,self,args,&exception);
-    if(exception) { ok=false; NSLog(@"[Flame v6] Managed exception in %s",method_get_name(m)); }
+    if(exception) { ok=false; NSLog(@"[Flame v7] Managed exception in %s",method_get_name(m)); }
     if(result && !exception && roots) roots->hold(result);
     return exception?nullptr:result;
 }
@@ -99,6 +99,7 @@ struct Bone {uint32_t handle;int parent=-1;};
 struct Target {uint32_t player=0,network=0,head=0;int actor=-1;std::vector<Bone> bones;};
 struct Segment {CGPoint a,b;bool enemy;};
 struct Item {CGRect box;NSString* text;bool enemy;};
+struct HeadMarker {CGPoint point;CGFloat radius;bool enemy;};
 struct Api {
     Runtime::P player=nullptr,spectatorClass=nullptr;
     Runtime::P active=nullptr,loaded=nullptr,handle=nullptr,find=nullptr,main=nullptr;
@@ -132,8 +133,8 @@ struct Api {
         return player&&v&&class_value_size(v,&align)==sizeof(V3)&&active&&loaded&&handle&&find&&main&&tr&&pos&&project&&get&&alive&&width&&height&&animator&&skeleton&&body&&bones&&parent&&network&&local&&team&&actor&&health&&dead;
     }
 };
-enum Option {Master=1,Enemies,Boxes,Skeleton,Health,Names,Distance,Tracers,Debug,Aim,Recoil};
-@interface FlameMarkers:UIView<UIGestureRecognizerDelegate>
+#include "FlameMenu.hpp"
+@interface FlameMarkers:UIView<UIGestureRecognizerDelegate,FlameMenuDelegate>
 @end
 @implementation FlameMarkers {
     CADisplayLink* _displayLink;UIView* _panel;UITapGestureRecognizer* _gesture;UISwitch* _master;
@@ -143,47 +144,76 @@ enum Option {Master=1,Enemies,Boxes,Skeleton,Health,Names,Distance,Tracers,Debug
     size_t _rigs,_boneCount,_missingRig;
     Extra::State _extras;BOOL _aim,_noRecoil;uint32_t _controls;int _knifeAction;float _aimRadius;
     UILabel* _extraLabel;
+    FlameMenu* _menu;NSDictionary* _skinRequest;
+    BOOL _noSpread,_speedHack,_unlimitedAmmo,_fovOverride,_crosshair,_corners,_filled,_headCircle,_showFps;
+    float _speedFactor,_fovValue,_maxDistance,_lineWidth,_aimSmoothing;NSInteger _accent;
+    std::vector<HeadMarker> _headMarkers;double _observeAfter,_fpsStart;NSInteger _frames;float _observedFPS;
 }
 - (instancetype)initWithFrame:(CGRect)frame {
     if((self=[super initWithFrame:frame])){
         self.backgroundColor=UIColor.clearColor;self.userInteractionEnabled=YES;
         self.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight;
-        _sceneHandle=-1;_status=@"Flame v6: ESP off";
+        _sceneHandle=-1;_status=@"Flame v7: ESP off";_aimRadius=100;_aimSmoothing=10;
+        _speedFactor=1.5;_fovValue=90;_lineWidth=1.2;_corners=YES;_showFps=YES;
         _onlyEnemies=YES;_showBoxes=YES;_showSkeleton=YES;_showHealth=YES;_showDistance=YES;
-        _aimRadius=100;
-        CGFloat height=fmax(150,fmin(355,frame.size.height-90));
-        _panel=[[UIView alloc]initWithFrame:CGRectMake(45,65,285,height)];
-        _panel.backgroundColor=[UIColor colorWithWhite:0.06 alpha:0.95];_panel.layer.cornerRadius=14;_panel.hidden=YES;
-        UILabel* title=[[UILabel alloc]initWithFrame:CGRectMake(16,8,250,30)];title.text=@"Flame ESP · v6";title.textColor=UIColor.whiteColor;[_panel addSubview:title];
-        UIScrollView* scroll=[[UIScrollView alloc]initWithFrame:CGRectMake(0,42,285,height-45)];
-        scroll.autoresizingMask=UIViewAutoresizingFlexibleHeight;scroll.contentSize=CGSizeMake(285,795);[_panel addSubview:scroll];
-        NSArray* labels=@[@"ESP / модуль",@"Только противники",@"Рамки",@"Скелет",@"Здоровье",@"Имена",@"Дистанция",@"Линии",@"Диагностика",@"AIM при огне (тест)",@"No Recoil (тест)"];
-        for(NSInteger row=0;row<labels.count;row++){
-            UILabel* label=[[UILabel alloc]initWithFrame:CGRectMake(16,row*37,205,32)];label.text=labels[row];label.textColor=UIColor.whiteColor;label.font=[UIFont systemFontOfSize:15];[scroll addSubview:label];
-            UISwitch* toggle=[[UISwitch alloc]initWithFrame:CGRectMake(222,row*37,50,31)];toggle.tag=row+1;
-            toggle.on=row==1||row==2||row==3||row==4||row==6;
-            [toggle addTarget:self action:@selector(optionChanged:) forControlEvents:UIControlEventValueChanged];[scroll addSubview:toggle];if(row==0)_master=toggle;
-        }
-        UISegmentedControl* rate=[[UISegmentedControl alloc]initWithItems:@[@"30 FPS",@"60 FPS"]];rate.frame=CGRectMake(16,416,252,32);rate.selectedSegmentIndex=1;rate.backgroundColor=UIColor.lightGrayColor;
-        [rate addTarget:self action:@selector(changeRate:) forControlEvents:UIControlEventValueChanged];[scroll addSubview:rate];[self addSubview:_panel];
-        UILabel* radiusLabel=[[UILabel alloc]initWithFrame:CGRectMake(16,455,250,24)];radiusLabel.text=@"Радиус AIM";radiusLabel.textColor=UIColor.whiteColor;[scroll addSubview:radiusLabel];
-        UISlider* radius=[[UISlider alloc]initWithFrame:CGRectMake(16,480,252,30)];radius.minimumValue=30;radius.maximumValue=180;radius.value=100;[radius addTarget:self action:@selector(changeRadius:) forControlEvents:UIControlEventValueChanged];[scroll addSubview:radius];
-        NSArray* knifeTitles=@[@"Нож → Butterfly (ID 8)",@"Вернуть исходный нож",@"Butterfly Vanilla (тест)",@"Butterfly Fade (тест)"];
-        for(NSInteger i=0;i<knifeTitles.count;i++){UIButton* button=[UIButton buttonWithType:UIButtonTypeSystem];button.frame=CGRectMake(16,520+i*36,252,32);button.tag=i+1;[button setTitle:knifeTitles[i] forState:UIControlStateNormal];button.backgroundColor=[UIColor colorWithWhite:0.18 alpha:1];button.layer.cornerRadius=6;[button addTarget:self action:@selector(requestKnife:) forControlEvents:UIControlEventTouchUpInside];[scroll addSubview:button];}
-        _extraLabel=[[UILabel alloc]initWithFrame:CGRectMake(16,670,252,95)];_extraLabel.numberOfLines=0;_extraLabel.font=[UIFont systemFontOfSize:12];_extraLabel.textColor=UIColor.lightGrayColor;_extraLabel.text=@"Новые функции — тестовые. Silent Aim пока не реализован.";[scroll addSubview:_extraLabel];
+        CGFloat width=fmin(740,frame.size.width-42),height=fmin(355,frame.size.height-30);
+        _menu=[[FlameMenu alloc]initWithFrame:CGRectMake((frame.size.width-width)/2,(frame.size.height-height)/2,width,height) config:FlameDefaultConfig()];
+        _menu.delegate=self;_menu.hidden=YES;_panel=_menu;_master=_menu.master;_extraLabel=_menu.statusLabel;[self addSubview:_menu];
         _gesture=[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(toggleMenu)];_gesture.numberOfTapsRequired=2;_gesture.numberOfTouchesRequired=3;_gesture.cancelsTouchesInView=NO;_gesture.delegate=self;
         _displayLink=[CADisplayLink displayLinkWithTarget:self selector:@selector(sample)];_displayLink.preferredFramesPerSecond=60;
         [_displayLink addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];_displayLink.paused=YES;
     }return self;
 }
+- (NSDictionary*)preferences {
+    NSDictionary* options=@{FlameOptionKey(Master):@NO,FlameOptionKey(Enemies):@(_onlyEnemies),FlameOptionKey(Boxes):@(_showBoxes),FlameOptionKey(Skeleton):@(_showSkeleton),FlameOptionKey(Health):@(_showHealth),FlameOptionKey(Names):@(_showNames),FlameOptionKey(Distance):@(_showDistance),FlameOptionKey(Tracers):@(_showTracers),FlameOptionKey(Debug):@(_debug),FlameOptionKey(Aim):@(_aim),FlameOptionKey(Recoil):@(_noRecoil),FlameOptionKey(NoSpread):@(_noSpread),FlameOptionKey(Speed):@(_speedHack),FlameOptionKey(Ammo):@(_unlimitedAmmo),FlameOptionKey(Fov):@(_fovOverride),FlameOptionKey(Crosshair):@(_crosshair),FlameOptionKey(CornerBox):@(_corners),FlameOptionKey(FilledBox):@(_filled),FlameOptionKey(HeadCircle):@(_headCircle),FlameOptionKey(FPSCounter):@(_showFps)};
+    return @{@"options":options,@"aimRadius":@(_aimRadius),@"aimSmoothing":@(_aimSmoothing),@"speedFactor":@(_speedFactor),@"fov":@(_fovValue),@"maxDistance":@(_maxDistance),@"lineWidth":@(_lineWidth),@"accent":@(_accent),@"fps":@(_displayLink.preferredFramesPerSecond)};
+}
+- (void)flameSetOption:(NSInteger)tag value:(BOOL)value {
+    UISwitch* change=[[UISwitch alloc]init];change.tag=tag;change.on=value;[self optionChanged:change];
+}
+- (void)flameSetNumber:(NSString*)key value:(double)value {
+    if(!std::isfinite(value))return;
+    if([key isEqual:@"aimRadius"])_aimRadius=std::clamp(value,30.0,180.0);
+    else if([key isEqual:@"aimSmoothing"])_aimSmoothing=std::clamp(value,3.0,25.0);
+    else if([key isEqual:@"speedFactor"])_speedFactor=std::clamp(value,1.0,3.0);
+    else if([key isEqual:@"fov"])_fovValue=std::clamp(value,60.0,120.0);
+    else if([key isEqual:@"maxDistance"])_maxDistance=std::clamp(value,0.0,250.0);
+    else if([key isEqual:@"lineWidth"])_lineWidth=std::clamp(value,.6,3.0);
+    else if([key isEqual:@"accent"])_accent=std::clamp((NSInteger)value,(NSInteger)0,(NSInteger)3);
+    else if([key isEqual:@"fps"])_displayLink.preferredFramesPerSecond=value<45?30:60;
+    [self setNeedsDisplay];
+}
+- (void)flameSkinAction:(NSString*)action weapon:(NSDictionary*)weapon skin:(NSDictionary*)skin {
+    if(!_enabled){_extraLabel.text=@"Включи модуль после загрузки матча";return;}
+    if(!weapon&&![action isEqual:@"restoreSkin"]&&![action isEqual:@"restoreModel"])return;
+    _skinRequest=@{@"action":action,@"weapon":weapon?:@{},@"skin":skin?:@{}};_extras.status=@"Проверка текущего оружия и выбранной конфигурации…";_extraLabel.text=_extras.status;
+}
+- (void)applyPreferences:(NSDictionary*)input {
+    [self flameSetOption:Master value:NO];
+    NSDictionary* defaults=FlameDefaultConfig();NSMutableDictionary* config=[defaults mutableCopy];NSMutableDictionary* opts=[defaults[@"options"] mutableCopy];
+    NSDictionary* supplied=[input[@"options"] isKindOfClass:NSDictionary.class]?input[@"options"]:@{};
+    for(NSString* key in opts)if([supplied[key] isKindOfClass:NSNumber.class])opts[key]=@([supplied[key] boolValue]);
+    opts[FlameOptionKey(Master)]=@NO;config[@"options"]=opts;
+    for(NSString* key in defaults)if(![key isEqual:@"options"]&&[input[key] isKindOfClass:NSNumber.class]&&std::isfinite([input[key] doubleValue]))config[key]=input[key];
+    for(NSString* key in defaults)if(![key isEqual:@"options"])[self flameSetNumber:key value:[config[key] doubleValue]];
+    for(NSString* key in opts)if(key.integerValue!=Master)[self flameSetOption:key.integerValue value:[opts[key] boolValue]];
+    [_menu sync:[self preferences]];_extraLabel.text=@"Настройки загружены. Модуль оставлен выключенным.";
+}
+- (void)flameConfigAction:(NSString*)action {
+    if([action isEqual:@"save"]){[NSUserDefaults.standardUserDefaults setObject:[self preferences] forKey:@"flame.v7.preferences"];_extraLabel.text=@"Настройки сохранены в приложении";}
+    else if([action isEqual:@"load"]){id saved=[NSUserDefaults.standardUserDefaults objectForKey:@"flame.v7.preferences"];if([saved isKindOfClass:NSDictionary.class])[self applyPreferences:saved];else _extraLabel.text=@"Сохранённых настроек ещё нет";}
+    else if([action isEqual:@"reset"]){[self applyPreferences:FlameDefaultConfig()];_extraLabel.text=@"Стандартные настройки восстановлены";}
+    else if([action isEqual:@"stop"]){[self flameSetOption:Master value:NO];[_menu setRuntimeOption:Master value:NO];_extraLabel.text=@"Модуль выключен; сохранённые параметры восстановлены";}
+}
+
 - (void)clearTargets {
     for(const Target& t:_targets){if(t.player)Runtime::gchandle_free(t.player);if(t.network)Runtime::gchandle_free(t.network);if(t.head)Runtime::gchandle_free(t.head);for(Bone b:t.bones)Runtime::gchandle_free(b.handle);}_targets.clear();
     if(_spectator){Runtime::gchandle_free(_spectator);_spectator=0;}_nextDiscovery=0;
     if(_controls){Runtime::gchandle_free(_controls);_controls=0;}
 }
-- (void)clearDrawing {_items.clear();_segments.clear();_tracers.clear();_dots.clear();}
+- (void)clearDrawing {_items.clear();_segments.clear();_tracers.clear();_dots.clear();_headMarkers.clear();}
 - (void)didMoveToWindow {
-    [super didMoveToWindow];[_gesture.view removeGestureRecognizer:_gesture];if(self.window)[self.window addGestureRecognizer:_gesture];else [self pause:@"Flame v6: paused"];
+    [super didMoveToWindow];[_gesture.view removeGestureRecognizer:_gesture];if(self.window)[self.window addGestureRecognizer:_gesture];else [self pause:@"Flame v7: paused"];
 }
 - (BOOL)gestureRecognizer:(UIGestureRecognizer*)a shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer*)b{return YES;}
 - (UIView*)hitTest:(CGPoint)p withEvent:(UIEvent*)e {UIView* hit=[super hitTest:p withEvent:e];return !_panel.hidden&&[hit isDescendantOfView:_panel]?hit:nil;}
@@ -192,18 +222,22 @@ enum Option {Master=1,Enemies,Boxes,Skeleton,Health,Names,Distance,Tracers,Debug
 - (void)changeRadius:(UISlider*)s {_aimRadius=s.value;}
 - (void)requestKnife:(UIButton*)button {
     if(!_enabled){_extraLabel.text=@"Включи модуль после входа в матч и возьми нож";return;}
-    _knifeAction=(int)button.tag;_extras.status=@"Проверка локального ножа…";_extraLabel.text=_extras.lastActualKnife>=0?[_extras.status stringByAppendingFormat:@"\nПроверенный текущий ID: %d",_extras.lastActualKnife]:_extras.status;
+    _knifeAction=(int)button.tag;_extras.status=@"Проверка локального ножа…";_extraLabel.text=[NSString stringWithFormat:@"%@\n%@",_extras.status,_extras.summary()];
 }
 - (void)optionChanged:(UISwitch*)s {
     switch(s.tag){
-        case Master:_extras.restoreRecoil();_knifeAction=0;[self clearTargets];[self clearDrawing];_enabled=s.on;_sceneHandle=-1;_settledAfter=NSProcessInfo.processInfo.systemUptime+5;_displayLink.paused=!_enabled;_status=_enabled?@"Flame v6: waiting for scene":@"Flame v6: ESP off";break;
+        case Master:_extras.restoreGameplay();_knifeAction=0;_skinRequest=nil;[self clearTargets];[self clearDrawing];_enabled=s.on;_sceneHandle=-1;_settledAfter=NSProcessInfo.processInfo.systemUptime+5;_fpsStart=0;_frames=0;_displayLink.paused=!_enabled;_status=_enabled?@"Flame v7: waiting for scene":@"Flame v7: ESP off";break;
         case Enemies:_onlyEnemies=s.on;break;case Boxes:_showBoxes=s.on;break;case Skeleton:_showSkeleton=s.on;break;
         case Health:_showHealth=s.on;break;case Names:_showNames=s.on;break;case Distance:_showDistance=s.on;break;case Tracers:_showTracers=s.on;break;case Debug:_debug=s.on;break;
         case Aim:_aim=s.on;_nextDiscovery=0;break;
         case Recoil:_noRecoil=s.on;if(!_noRecoil)_extras.restoreRecoil();break;
+        case NoSpread:_noSpread=s.on;if(!_noSpread)_extras.restoreSpread();break;
+        case Speed:_speedHack=s.on;if(!_speedHack)_extras.restoreSpeed();break;
+        case Ammo:_unlimitedAmmo=s.on;break;case Fov:_fovOverride=s.on;if(!_fovOverride)_extras.restoreFov();break;
+        case Crosshair:_crosshair=s.on;break;case CornerBox:_corners=s.on;break;case FilledBox:_filled=s.on;break;case HeadCircle:_headCircle=s.on;break;case FPSCounter:_showFps=s.on;break;
     }[self setNeedsDisplay];
 }
-- (void)pause:(NSString*)status {_extras.restoreRecoil();_extras.discardKnife();_knifeAction=0;_enabled=NO;_master.on=NO;_displayLink.paused=YES;[self clearTargets];[self clearDrawing];_status=status;[self setNeedsDisplay];}
+- (void)pause:(NSString*)status {_extras.restoreGameplay();_extras.discardKnife();_extras.discardSkins();_skinRequest=nil;_knifeAction=0;_enabled=NO;_master.on=NO;[_menu setRuntimeOption:Master value:NO];_displayLink.paused=YES;[self clearTargets];[self clearDrawing];_status=status;[self setNeedsDisplay];}
 - (BOOL)isAlive:(Runtime::P)object ok:(bool&)ok {
     if(!object||!ok)return NO;Runtime::P args[]={object};Runtime::P b=Runtime::invoke(_api.alive,nullptr,args,ok);return b&&*static_cast<bool*>(Runtime::object_unbox(b));
 }
@@ -263,26 +297,26 @@ enum Option {Master=1,Enemies,Boxes,Skeleton,Health,Names,Distance,Tracers,Debug
 }
 - (void)sample {
     using namespace Runtime;[self clearDrawing];if(!_enabled)return;
-    if(UIApplication.sharedApplication.applicationState!=UIApplicationStateActive||!self.window){[self pause:@"Flame v6: paused in background"];return;}
-    if(!_ready)_ready=load();if(!_ready){_status=@"Flame v6: waiting for runtime";[self setNeedsDisplay];return;}
-    if(!NSThread.isMainThread||!thread_current()){[self pause:@"Flame v6: runtime thread unavailable"];return;}
-    if(!_apiReady)_apiReady=_api.init();if(!_apiReady){[self pause:@"Flame v6: required methods unavailable"];return;}
+    if(UIApplication.sharedApplication.applicationState!=UIApplicationStateActive||!self.window){[self pause:@"Flame v7: paused in background"];return;}
+    if(!_ready)_ready=load();if(!_ready){_status=@"Flame v7: waiting for runtime";[self setNeedsDisplay];return;}
+    if(!NSThread.isMainThread||!thread_current()){[self pause:@"Flame v7: runtime thread unavailable"];return;}
+    if(!_apiReady)_apiReady=_api.init();if(!_apiReady){[self pause:@"Flame v7: required methods unavailable"];return;}
     RootScope frameRoots;bool ok=true;
     P scene=invoke(_api.active,nullptr,nullptr,ok),raw=scene?object_unbox(scene):nullptr;
-    if(!raw){[self pause:@"Flame v6: no scene"];return;}
+    if(!raw){[self pause:@"Flame v7: no scene"];return;}
     P loaded=invoke(_api.loaded,raw,nullptr,ok),handle=invoke(_api.handle,raw,nullptr,ok);
-    if(!ok||!loaded||!handle){[self pause:@"Flame v6: scene check failed"];return;}
+    if(!ok||!loaded||!handle){[self pause:@"Flame v7: scene check failed"];return;}
     int current=[self integer:handle];NSTimeInterval now=NSProcessInfo.processInfo.systemUptime;
-    if(!*static_cast<bool*>(object_unbox(loaded))||(_sceneHandle!=-1&&current!=_sceneHandle)){[self pause:@"Flame v6: scene changed; enable after loading"];return;}
+    if(!_fpsStart){_fpsStart=now;_frames=0;}_frames++;if(now-_fpsStart>=.5){_observedFPS=_frames/(now-_fpsStart);_frames=0;_fpsStart=now;}
+    if(!*static_cast<bool*>(object_unbox(loaded))||(_sceneHandle!=-1&&current!=_sceneHandle)){[self pause:@"Flame v7: scene changed; enable after loading"];return;}
     if(_sceneHandle==-1){_sceneHandle=current;_settledAfter=now+5;}
-    if(now<_settledAfter){_status=@"Flame v6: waiting for scene";[self setNeedsDisplay];return;}
-    if((_aim||_noRecoil||_knifeAction)&&!_extras.ready){if(!_extras.init())_extras.status=@"Экспериментальные API недоступны";}
-    if(now>=_nextDiscovery){[self discover:ok];_nextDiscovery=now+0.5;if(!ok){[self pause:@"Flame v6: discovery exception"];return;}}
-    if(!_showBoxes&&!_showSkeleton&&!_showHealth&&!_showNames&&!_showDistance&&!_showTracers&&!_aim&&!_noRecoil&&!_knifeAction){_status=@"Flame v6: choose an ESP feature in menu";[self setNeedsDisplay];return;}
+    if(now<_settledAfter){_status=@"Flame v7: waiting for scene";[self setNeedsDisplay];return;}
+    if(!_extras.ready){if(!_extras.init())_extras.status=@"Экспериментальные API недоступны";}
+    if(now>=_nextDiscovery){[self discover:ok];_nextDiscovery=now+0.5;if(!ok){[self pause:@"Flame v7: discovery exception"];return;}}
     P camera=invoke(_api.main,nullptr,nullptr,ok);
-    if(![self isAlive:camera ok:ok]){if(!ok)[self pause:@"Flame v6: camera exception"];else {_status=@"Flame v6: no camera";[self setNeedsDisplay];}return;}
+    if(![self isAlive:camera ok:ok]){if(!ok)[self pause:@"Flame v7: camera exception"];else {_status=@"Flame v7: no camera";[self setNeedsDisplay];}return;}
     int w=[self integer:invoke(_api.width,nullptr,nullptr,ok)],h=[self integer:invoke(_api.height,nullptr,nullptr,ok)];
-    if(!ok||w<=0||h<=0){[self pause:@"Flame v6: viewport error"];return;}
+    if(!ok||w<=0||h<=0){[self pause:@"Flame v7: viewport error"];return;}
     CGPoint scale=CGPointMake(self.bounds.size.width/w,self.bounds.size.height/h);
     P local=invoke(_api.local,nullptr,nullptr,ok),anchor=local;
     int localActor=local?[self integer:invoke(_api.actor,local,nullptr,ok)]:-1;
@@ -294,20 +328,31 @@ enum Option {Master=1,Enemies,Boxes,Skeleton,Health,Names,Distance,Tracers,Debug
     int anchorActor=anchor?[self integer:invoke(_api.actor,anchor,nullptr,ok)]:-1;
     NSString* anchorTeam=anchor?[[self string:invoke(_api.team,anchor,nullptr,ok)] lowercaseString]:@"";
     V3 cameraPos{};BOOL haveCameraPos=NO;P cameraTransform=nullptr;
-    if(_showDistance||_aim){cameraTransform=invoke(_api.tr,camera,nullptr,ok);if(cameraTransform)haveCameraPos=[self position:cameraTransform result:cameraPos ok:ok];}
+    if(_showDistance||_aim||_maxDistance>0){cameraTransform=invoke(_api.tr,camera,nullptr,ok);if(cameraTransform)haveCameraPos=[self position:cameraTransform result:cameraPos ok:ok];}
     P localController=nullptr;for(const Target& t:_targets)if(t.actor>=0&&t.actor==localActor){localController=gchandle_get_target(t.player);break;}
     BOOL localAlive=[self isAlive:localController ok:ok];if(localAlive){P dead=invoke(_api.dead,localController,nullptr,ok);localAlive=dead&&!*static_cast<bool*>(object_unbox(dead));}
     BOOL fireHeld=NO;
-    if(_extras.ready&&localAlive&&!watching&&(_aim||_noRecoil||_knifeAction||_extras.expectedKnife>=0)){
+    if(_extras.ready&&localAlive&&!watching){
         bool extraOK=true;P ac=invoke(_extras.arms,localController,nullptr,extraOK);
         if([self isAlive:ac ok:extraOK]){
             if(_noRecoil)_extras.noRecoil(ac,extraOK);else _extras.restoreRecoil();
+            if(_noSpread)_extras.noSpread(ac,extraOK);else _extras.restoreSpread();
+            if(_speedHack)_extras.speed(localController,_speedFactor,extraOK);else _extras.restoreSpeed();
+            if(_unlimitedAmmo)_extras.unlimitedAmmo(ac,extraOK);
+            if(_skinRequest){NSDictionary* request=_skinRequest;_skinRequest=nil;_extras.skinAction(ac,request[@"action"],request[@"weapon"],request[@"skin"][@"key"],_api.get,extraOK);}
             if(_knifeAction){_extras.knife(ac,_knifeAction,_api.get,extraOK);_knifeAction=0;}
-            _extras.verifyKnife(ac,extraOK);
+            _extras.verifyKnife(ac,extraOK);_extras.verifySkin(ac,extraOK);
+            if(now>=_observeAfter){_extras.observe(ac,extraOK);_observeAfter=now+.5;[_menu updateWeapon:_extras.observedWeapon name:_extras.observedName skin:_extras.observedSkin];}
             if(_aim&&_controls&&_panel.hidden){P c=gchandle_get_target(_controls);if([self isAlive:c ok:extraOK])fireHeld=_extras.fireHeld(c,extraOK);}
         }
-        if(!extraOK){_extras.restoreRecoil();_aim=NO;_noRecoil=NO;_knifeAction=0;((UISwitch*)[_panel viewWithTag:Aim]).on=NO;((UISwitch*)[_panel viewWithTag:Recoil]).on=NO;_extras.status=@"Тестовая функция вызвала исключение и остановлена";}
-    }else {if(!localAlive||watching)_extras.restoreRecoil();if(_knifeAction){_extras.status=@"Замена доступна живому локальному игроку с ножом";_knifeAction=0;}}
+        if(!extraOK){_extras.restoreGameplay();_aim=NO;_noRecoil=NO;_noSpread=NO;_speedHack=NO;_unlimitedAmmo=NO;_fovOverride=NO;_skinRequest=nil;_knifeAction=0;
+            for(int tag:{Aim,Recoil,NoSpread,Speed,Ammo,Fov})[_menu setRuntimeOption:tag value:NO];_extras.status=@"Тестовая функция вызвала исключение и остановлена";}
+    }else{
+        _extras.restoreRecoil();_extras.restoreSpread();_extras.restoreSpeed();
+        if(_knifeAction||_skinRequest){_extras.status=@"Скинченджер доступен живому локальному игроку";_skinRequest=nil;_knifeAction=0;}
+    }
+    if(_extras.ready){bool fovOK=true;if(_fovOverride)_extras.fieldOfView(camera,_fovValue,fovOK);else _extras.restoreFov();if(!fovOK){_fovOverride=NO;[_menu setRuntimeOption:Fov value:NO];_extras.restoreFov();}}
+
     V3 aimTarget{};BOOL haveAimTarget=NO;float nearest=_aimRadius*_aimRadius;
     size_t filtered=0,unknown=0,visible=0;
     for(const Target& target:_targets){
@@ -318,10 +363,11 @@ enum Option {Master=1,Enemies,Boxes,Skeleton,Health,Names,Distance,Tracers,Debug
         NSString* team=network?[[self string:invoke(_api.team,network,nullptr,ok)] lowercaseString]:@"";
         BOOL known=team.length>0&&anchorTeam.length>0,enemy=known&&![team isEqualToString:anchorTeam];
         if(_onlyEnemies&&!known){unknown++;continue;}if(_onlyEnemies&&!enemy){filtered++;continue;}
+        if(_maxDistance>0&&haveCameraPos){P transform=invoke(_api.tr,player,nullptr,ok);V3 pos;if(transform&&[self position:transform result:pos ok:ok]){double dx=pos.x-cameraPos.x,dy=pos.y-cameraPos.y,dz=pos.z-cameraPos.z;if(dx*dx+dy*dy+dz*dz>_maxDistance*_maxDistance)continue;}}
         if(_aim&&fireHeld&&enemy&&haveCameraPos&&target.head){P head=gchandle_get_target(target.head);V3 world;CGPoint point;if([self isAlive:head ok:ok]&&[self position:head result:world ok:ok]&&[self project:world camera:camera scale:scale height:h result:point ok:ok]){float dx=point.x-self.bounds.size.width/2,dy=point.y-self.bounds.size.height/2,d=dx*dx+dy*dy;if(d<nearest){nearest=d;aimTarget=world;haveAimTarget=YES;}}}
         std::vector<CGPoint> points(target.bones.size());std::vector<bool> valid(target.bones.size(),false);
         CGFloat left=INFINITY,top=INFINITY,right=-INFINITY,bottom=-INFINITY;size_t projected=0;BOOL nearPlane=NO;
-        if(_showBoxes||_showSkeleton||_showHealth||_showNames||_showDistance||_showTracers){
+        if(_showBoxes||_showSkeleton||_showHealth||_showNames||_showDistance||_showTracers||_headCircle){
             for(size_t j=0;j<target.bones.size()&&ok;j++){
                 RootScope boneRoots;P transform=gchandle_get_target(target.bones[j].handle);if(![self isAlive:transform ok:ok])continue;
                 V3 pos;if(![self position:transform result:pos ok:ok])continue;CGPoint p;
@@ -340,6 +386,7 @@ enum Option {Master=1,Enemies,Boxes,Skeleton,Health,Names,Distance,Tracers,Debug
         CGFloat padX=fmax(2,(right-left)*0.04),padY=fmax(3,(bottom-top)*0.07);
         CGRect box=CGRectMake(left-padX,top-padY,right-left+2*padX,bottom-top+2*padY);
         if(!CGRectIntersectsRect(box,self.bounds))continue;visible++;
+        if(_headCircle&&target.head){P head=gchandle_get_target(target.head);V3 world;CGPoint point;if([self isAlive:head ok:ok]&&[self position:head result:world ok:ok]&&[self project:world camera:camera scale:scale height:h result:point ok:ok])_headMarkers.push_back({point,fmax(2,fmin(12,box.size.height*.055)),(bool)enemy});}
         if(_showSkeleton)for(size_t j=0;j<target.bones.size();j++){
             int parent=target.bones[j].parent;if(parent>=0&&parent<(int)points.size()&&valid[j]&&valid[parent])_segments.push_back({points[j],points[parent],(bool)enemy});
         }
@@ -354,27 +401,37 @@ enum Option {Master=1,Enemies,Boxes,Skeleton,Health,Names,Distance,Tracers,Debug
         if(_showTracers)_tracers.push_back({CGPointMake(self.bounds.size.width/2,self.bounds.size.height-8),CGPointMake(CGRectGetMidX(box),CGRectGetMaxY(box)),(bool)enemy});
         if(!ok)break;
     }
-    if(ok&&haveAimTarget&&cameraTransform){bool aimOK=true;float dt=fmax(0.001,fmin(0.05,_displayLink.targetTimestamp-_displayLink.timestamp));_extras.aim(localController,cameraTransform,cameraPos,aimTarget,1-expf(-10*dt),aimOK);if(!aimOK){_aim=NO;((UISwitch*)[_panel viewWithTag:Aim]).on=NO;_extras.status=@"AIM вызвал исключение и остановлен";}}
-    _extraLabel.text=_extras.lastActualKnife>=0?[_extras.status stringByAppendingFormat:@"\nПроверенный текущий ID: %d",_extras.lastActualKnife]:_extras.status;
-    if(!ok){[self pause:@"Flame v6: managed exception; paused"];return;}
-    _status=[NSString stringWithFormat:@"v6: %zu players · %@ team %@\nrigs %zu/%zu · bones %zu · missing %zu\nallies filtered %zu · unknown teams %zu",visible,watching?@"watched":@"local",anchorTeam.length?anchorTeam:@"unknown",_rigs,_targets.size(),_boneCount,_missingRig,filtered,unknown];
+    if(ok&&haveAimTarget&&cameraTransform){bool aimOK=true;float dt=fmax(0.001,fmin(0.05,_displayLink.targetTimestamp-_displayLink.timestamp));_extras.aim(localController,cameraTransform,cameraPos,aimTarget,1-expf(-_aimSmoothing*dt),aimOK);if(!aimOK){_aim=NO;[_menu setRuntimeOption:Aim value:NO];_extras.status=@"AIM вызвал исключение и остановлен";}}
+    _extraLabel.text=[NSString stringWithFormat:@"%@\n%@",_extras.status,_extras.summary()];
+    if(!ok){[self pause:@"Flame v7: managed exception; paused"];return;}
+    _status=[NSString stringWithFormat:@"v7: %zu players · %@ team %@\nrigs %zu/%zu · bones %zu · missing %zu\nallies filtered %zu · unknown teams %zu",visible,watching?@"watched":@"local",anchorTeam.length?anchorTeam:@"unknown",_rigs,_targets.size(),_boneCount,_missingRig,filtered,unknown];
     [self setNeedsDisplay];
 }
-- (UIColor*)color:(BOOL)enemy{return enemy?UIColor.cyanColor:[UIColor colorWithRed:0.35 green:1 blue:0.45 alpha:1];}
+- (UIColor*)color:(BOOL)enemy{return enemy?FlameAccent(_accent):[UIColor colorWithRed:0.35 green:1 blue:0.45 alpha:1];}
+- (UIBezierPath*)boxPath:(CGRect)rect {
+    if(!_corners)return [UIBezierPath bezierPathWithRect:rect];
+    UIBezierPath* path=[UIBezierPath bezierPath];CGFloat x=rect.origin.x,y=rect.origin.y,r=CGRectGetMaxX(rect),b=CGRectGetMaxY(rect),len=fmin(rect.size.width,rect.size.height)*.25;
+    CGPoint segments[][3]={{{x,y+len},{x,y},{x+len,y}},{{r-len,y},{r,y},{r,y+len}},{{x,b-len},{x,b},{x+len,b}},{{r-len,b},{r,b},{r,b-len}}};
+    for(auto& points:segments){[path moveToPoint:points[0]];[path addLineToPoint:points[1]];[path addLineToPoint:points[2]];}return path;
+}
 - (void)stroke:(const std::vector<Segment>&)segments width:(CGFloat)width {
     for(const Segment& s:segments){UIBezierPath* p=[UIBezierPath bezierPath];[p moveToPoint:s.a];[p addLineToPoint:s.b];[UIColor.blackColor setStroke];p.lineWidth=width+1.5;[p stroke];[[self color:s.enemy]setStroke];p.lineWidth=width;[p stroke];}
 }
 - (void)drawRect:(CGRect)rect {
     CGContextRef context=UIGraphicsGetCurrentContext();CGContextSaveGState(context);CGContextClipToRect(context,self.bounds);
     if(_enabled&&_aim){[[UIColor colorWithWhite:1 alpha:0.45] setStroke];UIBezierPath* circle=[UIBezierPath bezierPathWithOvalInRect:CGRectMake(self.bounds.size.width/2-_aimRadius,self.bounds.size.height/2-_aimRadius,2*_aimRadius,2*_aimRadius)];circle.lineWidth=0.8;[circle stroke];}
-    [self stroke:_tracers width:0.8];[self stroke:_segments width:1.2];
+    if(_filled)for(const Item& item:_items){[[[self color:item.enemy] colorWithAlphaComponent:.09]setFill];UIRectFill(item.box);}
+    [self stroke:_tracers width:fmax(.6,_lineWidth*.65)];[self stroke:_segments width:_lineWidth];
     for(const Item& item:_items){
-        if(_showBoxes){UIBezierPath* p=[UIBezierPath bezierPathWithRect:item.box];[UIColor.blackColor setStroke];p.lineWidth=3;[p stroke];[[self color:item.enemy]setStroke];p.lineWidth=1.2;[p stroke];}
+        if(_showBoxes){UIBezierPath* p=[self boxPath:item.box];[UIColor.blackColor setStroke];p.lineWidth=_lineWidth+1.6;[p stroke];[[self color:item.enemy]setStroke];p.lineWidth=_lineWidth;[p stroke];}
         if(item.text.length){NSDictionary* attrs=@{NSForegroundColorAttributeName:[self color:item.enemy],NSFontAttributeName:[UIFont boldSystemFontOfSize:10],NSStrokeColorAttributeName:UIColor.blackColor,NSStrokeWidthAttributeName:@(-2)};
             CGSize size=[item.text sizeWithAttributes:attrs];[item.text drawAtPoint:CGPointMake(CGRectGetMidX(item.box)-size.width/2,fmax(0,item.box.origin.y-size.height-2)) withAttributes:attrs];}
     }
     [UIColor.cyanColor setStroke];for(CGPoint p:_dots){UIBezierPath* path=[UIBezierPath bezierPathWithOvalInRect:CGRectMake(p.x-2,p.y-2,4,4)];path.lineWidth=1.2;[path stroke];}
+    for(const HeadMarker& marker:_headMarkers){[[self color:marker.enemy]setStroke];UIBezierPath* circle=[UIBezierPath bezierPathWithOvalInRect:CGRectMake(marker.point.x-marker.radius,marker.point.y-marker.radius,2*marker.radius,2*marker.radius)];circle.lineWidth=_lineWidth;[circle stroke];}
+    if(_enabled&&_crosshair){CGFloat x=self.bounds.size.width/2,y=self.bounds.size.height/2;UIBezierPath* p=[UIBezierPath bezierPath];[p moveToPoint:CGPointMake(x-7,y)];[p addLineToPoint:CGPointMake(x-2,y)];[p moveToPoint:CGPointMake(x+2,y)];[p addLineToPoint:CGPointMake(x+7,y)];[p moveToPoint:CGPointMake(x,y-7)];[p addLineToPoint:CGPointMake(x,y-2)];[p moveToPoint:CGPointMake(x,y+2)];[p addLineToPoint:CGPointMake(x,y+7)];[UIColor.blackColor setStroke];p.lineWidth=3;[p stroke];[FlameAccent(_accent)setStroke];p.lineWidth=1.2;[p stroke];}
     CGContextRestoreGState(context);
+    if(_enabled&&_showFps)[[NSString stringWithFormat:@"ESP %.0f FPS",_observedFPS]drawAtPoint:CGPointMake(self.bounds.size.width-116,19) withAttributes:@{NSForegroundColorAttributeName:FlameAccent(_accent),NSFontAttributeName:[UIFont boldSystemFontOfSize:11]}];
     if(_debug||!_enabled||!_apiReady||(_onlyEnemies&&_items.empty()))[_status drawInRect:CGRectMake(48,18,480,55) withAttributes:@{NSForegroundColorAttributeName:UIColor.cyanColor,NSFontAttributeName:[UIFont systemFontOfSize:11]}];
 }
 @end

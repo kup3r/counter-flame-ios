@@ -1,0 +1,1735 @@
+{
+  "source": "CounterFlame 1.4.1 build 7; WeaponId defaults + bundled Addressables material catalog",
+  "weapons": [
+    {
+      "id": 9,
+      "name": "AK47",
+      "label": "AK47",
+      "category": "rifles",
+      "skins": [
+        {
+          "key": "ak47_aqauamarince",
+          "label": "Aqauamarince"
+        },
+        {
+          "key": "ak47_asiimov",
+          "label": "Asiimov"
+        },
+        {
+          "key": "ak47_autoexec",
+          "label": "Autoexec"
+        },
+        {
+          "key": "ak47_breakthrough",
+          "label": "Breakthrough"
+        },
+        {
+          "key": "ak47_casehardened",
+          "label": "Casehardened"
+        },
+        {
+          "key": "ak47_colony",
+          "label": "Colony"
+        },
+        {
+          "key": "ak47_elitebuild",
+          "label": "Elitebuild"
+        },
+        {
+          "key": "ak47_emerald",
+          "label": "Emerald"
+        },
+        {
+          "key": "ak47_empress",
+          "label": "Empress"
+        },
+        {
+          "key": "ak47_fireserpent",
+          "label": "Fireserpent"
+        },
+        {
+          "key": "ak47_frontside",
+          "label": "Frontside"
+        },
+        {
+          "key": "ak47_fuel",
+          "label": "Fuel"
+        },
+        {
+          "key": "ak47_goldarabesque",
+          "label": "Goldarabesque"
+        },
+        {
+          "key": "ak47_icecoaled",
+          "label": "Icecoaled"
+        },
+        {
+          "key": "ak47_inheritance",
+          "label": "Inheritance"
+        },
+        {
+          "key": "ak47_neonrevolution",
+          "label": "Neonrevolution"
+        },
+        {
+          "key": "ak47_orbit",
+          "label": "Orbit"
+        },
+        {
+          "key": "ak47_pantera",
+          "label": "Pantera"
+        },
+        {
+          "key": "ak47_phantomdisruptor",
+          "label": "Phantomdisruptor"
+        },
+        {
+          "key": "ak47_pointdisarray",
+          "label": "Pointdisarray"
+        },
+        {
+          "key": "ak47_redline",
+          "label": "Redline"
+        },
+        {
+          "key": "ak47_searingrage",
+          "label": "Searingrage"
+        },
+        {
+          "key": "ak47_slate",
+          "label": "Slate"
+        },
+        {
+          "key": "ak47_uncharted",
+          "label": "Uncharted"
+        },
+        {
+          "key": "ak47_vulcan",
+          "label": "Vulcan"
+        },
+        {
+          "key": "ak47_wildlotus",
+          "label": "Wildlotus"
+        }
+      ]
+    },
+    {
+      "id": 41,
+      "name": "AUG",
+      "label": "AUG",
+      "category": "rifles",
+      "skins": [
+        {
+          "key": "aug_lilpig",
+          "label": "Lilpig"
+        },
+        {
+          "key": "aug_signalscanner",
+          "label": "Signalscanner"
+        },
+        {
+          "key": "aug_sydmead",
+          "label": "Sydmead"
+        },
+        {
+          "key": "aug_tomcat",
+          "label": "Tomcat"
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "name": "AWP",
+      "label": "AWP",
+      "category": "snipers",
+      "skins": [
+        {
+          "key": "awp_apparatus",
+          "label": "Apparatus"
+        },
+        {
+          "key": "awp_asiimov",
+          "label": "Asiimov"
+        },
+        {
+          "key": "awp_atheris",
+          "label": "Atheris"
+        },
+        {
+          "key": "awp_blackbox",
+          "label": "Blackbox"
+        },
+        {
+          "key": "awp_blacknile",
+          "label": "Blacknile"
+        },
+        {
+          "key": "awp_capillary",
+          "label": "Capillary"
+        },
+        {
+          "key": "awp_chromaticaberration",
+          "label": "Chromaticaberration"
+        },
+        {
+          "key": "awp_crakow",
+          "label": "Crakow"
+        },
+        {
+          "key": "awp_dragonlore",
+          "label": "Dragonlore"
+        },
+        {
+          "key": "awp_feverdream",
+          "label": "Feverdream"
+        },
+        {
+          "key": "awp_golden",
+          "label": "Golden"
+        },
+        {
+          "key": "awp_gungnir",
+          "label": "Gungnir"
+        },
+        {
+          "key": "awp_lightingstrike",
+          "label": "Lightingstrike"
+        },
+        {
+          "key": "awp_printstream",
+          "label": "Printstream"
+        },
+        {
+          "key": "awp_redline",
+          "label": "Redline"
+        },
+        {
+          "key": "awp_suninleo",
+          "label": "Suninleo"
+        },
+        {
+          "key": "awp_theend",
+          "label": "Theend"
+        },
+        {
+          "key": "awp_wildfire",
+          "label": "Wildfire"
+        },
+        {
+          "key": "awp_wormgod",
+          "label": "Wormgod"
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "name": "Bayonet",
+      "label": "Bayonet",
+      "category": "knives",
+      "skins": [
+        {
+          "key": "bayonet_autotronic",
+          "label": "Autotronic"
+        },
+        {
+          "key": "bayonet_blacklaminate",
+          "label": "Blacklaminate"
+        },
+        {
+          "key": "bayonet_brightwater",
+          "label": "Brightwater"
+        },
+        {
+          "key": "bayonet_doppler",
+          "label": "Doppler"
+        },
+        {
+          "key": "bayonet_fade",
+          "label": "Fade"
+        },
+        {
+          "key": "bayonet_freehand",
+          "label": "Freehand"
+        },
+        {
+          "key": "bayonet_gammadoppler",
+          "label": "Gammadoppler"
+        },
+        {
+          "key": "bayonet_lore",
+          "label": "Lore"
+        },
+        {
+          "key": "bayonet_marblefade",
+          "label": "Marblefade"
+        },
+        {
+          "key": "bayonet_tigertooth",
+          "label": "Tigertooth"
+        },
+        {
+          "key": "bayonet_vanilla",
+          "label": "Vanilla"
+        }
+      ]
+    },
+    {
+      "id": 45,
+      "name": "Bizon",
+      "label": "Bizon",
+      "category": "smg",
+      "skins": [
+        {
+          "key": "bizon_anubis",
+          "label": "Anubis"
+        },
+        {
+          "key": "bizon_osiris",
+          "label": "Osiris"
+        },
+        {
+          "key": "bizon_rmx",
+          "label": "Rmx"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "name": "Butterfly",
+      "label": "Butterfly",
+      "category": "knives",
+      "skins": [
+        {
+          "key": "butterfly_bluesteel",
+          "label": "Bluesteel"
+        },
+        {
+          "key": "butterfly_borealforest",
+          "label": "Borealforest"
+        },
+        {
+          "key": "butterfly_casehardened",
+          "label": "Casehardened"
+        },
+        {
+          "key": "butterfly_crimsonweb",
+          "label": "Crimsonweb"
+        },
+        {
+          "key": "butterfly_doppler",
+          "label": "Doppler"
+        },
+        {
+          "key": "butterfly_emerald",
+          "label": "Emerald"
+        },
+        {
+          "key": "butterfly_fade",
+          "label": "Fade"
+        },
+        {
+          "key": "butterfly_forestddpat",
+          "label": "Forestddpat"
+        },
+        {
+          "key": "butterfly_gammadoppler",
+          "label": "Gammadoppler"
+        },
+        {
+          "key": "butterfly_lore",
+          "label": "Lore"
+        },
+        {
+          "key": "butterfly_marblefade",
+          "label": "Marblefade"
+        },
+        {
+          "key": "butterfly_night",
+          "label": "Night"
+        },
+        {
+          "key": "butterfly_ruby",
+          "label": "Ruby"
+        },
+        {
+          "key": "butterfly_safarimesh",
+          "label": "Safarimesh"
+        },
+        {
+          "key": "butterfly_sapphire",
+          "label": "Sapphire"
+        },
+        {
+          "key": "butterfly_scorched",
+          "label": "Scorched"
+        },
+        {
+          "key": "butterfly_slaughter",
+          "label": "Slaughter"
+        },
+        {
+          "key": "butterfly_stained",
+          "label": "Stained"
+        },
+        {
+          "key": "butterfly_urbanmasked",
+          "label": "Urbanmasked"
+        },
+        {
+          "key": "butterfly_vanilla",
+          "label": "Vanilla"
+        }
+      ]
+    },
+    {
+      "id": 44,
+      "name": "CZ75",
+      "label": "CZ75",
+      "category": "pistols",
+      "skins": [
+        {
+          "key": "cz75a_distressed",
+          "label": "Distressed"
+        },
+        {
+          "key": "cz75a_hydraulics",
+          "label": "Hydraulics"
+        },
+        {
+          "key": "cz75a_imprint",
+          "label": "Imprint"
+        },
+        {
+          "key": "cz75a_tigris",
+          "label": "Tigris"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "DesertEagle",
+      "label": "DesertEagle",
+      "category": "pistols",
+      "skins": [
+        {
+          "key": "deagle_blaze",
+          "label": "Blaze"
+        },
+        {
+          "key": "deagle_blueply",
+          "label": "Blueply"
+        },
+        {
+          "key": "deagle_cobalt_disruption",
+          "label": "Cobalt Disruption"
+        },
+        {
+          "key": "deagle_codered",
+          "label": "Codered"
+        },
+        {
+          "key": "deagle_conspiracy",
+          "label": "Conspiracy"
+        },
+        {
+          "key": "deagle_corinthian",
+          "label": "Corinthian"
+        },
+        {
+          "key": "deagle_dragon",
+          "label": "Dragon"
+        },
+        {
+          "key": "deagle_emerald",
+          "label": "Emerald"
+        },
+        {
+          "key": "deagle_fox",
+          "label": "Fox"
+        },
+        {
+          "key": "deagle_mechaindustries",
+          "label": "Mechaindustries"
+        },
+        {
+          "key": "deagle_oceandrive",
+          "label": "Oceandrive"
+        },
+        {
+          "key": "deagle_oxideblaze",
+          "label": "Oxideblaze"
+        },
+        {
+          "key": "deagle_printstream",
+          "label": "Printstream"
+        },
+        {
+          "key": "deagle_sandstorm",
+          "label": "Sandstorm"
+        },
+        {
+          "key": "deagle_serpentstrike",
+          "label": "Serpentstrike"
+        },
+        {
+          "key": "deagle_thedailydeagle",
+          "label": "Thedailydeagle"
+        },
+        {
+          "key": "deagle_triggerdiscipline",
+          "label": "Triggerdiscipline"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "name": "Famas",
+      "label": "Famas",
+      "category": "rifles",
+      "skins": [
+        {
+          "key": "famas_athena",
+          "label": "Athena"
+        },
+        {
+          "key": "famas_badtrip",
+          "label": "Badtrip"
+        },
+        {
+          "key": "famas_bluewolf",
+          "label": "Bluewolf"
+        },
+        {
+          "key": "famas_commemoration",
+          "label": "Commemoration"
+        },
+        {
+          "key": "famas_corpdefense",
+          "label": "Corpdefense"
+        },
+        {
+          "key": "famas_decommissioned",
+          "label": "Decommissioned"
+        },
+        {
+          "key": "famas_mecha",
+          "label": "Mecha"
+        },
+        {
+          "key": "famas_meow",
+          "label": "Meow"
+        },
+        {
+          "key": "famas_neural_net",
+          "label": "Neural Net"
+        },
+        {
+          "key": "famas_rapideyemovement",
+          "label": "Rapideyemovement"
+        },
+        {
+          "key": "famas_spectron",
+          "label": "Spectron"
+        },
+        {
+          "key": "famas_styx",
+          "label": "Styx"
+        },
+        {
+          "key": "famas_valence",
+          "label": "Valence"
+        },
+        {
+          "key": "famas_vendetta",
+          "label": "Vendetta"
+        }
+      ]
+    },
+    {
+      "id": 36,
+      "name": "FiveSeven",
+      "label": "FiveSeven",
+      "category": "pistols",
+      "skins": [
+        {
+          "key": "fiveseven_fowlplay",
+          "label": "Fowlplay"
+        },
+        {
+          "key": "fiveseven_hyperbeast",
+          "label": "Hyperbeast"
+        },
+        {
+          "key": "fiveseven_scumbria",
+          "label": "Scumbria"
+        }
+      ]
+    },
+    {
+      "id": 31,
+      "name": "Flashbang",
+      "label": "Flashbang",
+      "category": "other",
+      "skins": []
+    },
+    {
+      "id": 13,
+      "name": "FlipKnife",
+      "label": "FlipKnife",
+      "category": "knives",
+      "skins": [
+        {
+          "key": "flipknife_autotronic",
+          "label": "Autotronic"
+        },
+        {
+          "key": "flipknife_blacklaminate",
+          "label": "Blacklaminate"
+        },
+        {
+          "key": "flipknife_brightwater",
+          "label": "Brightwater"
+        },
+        {
+          "key": "flipknife_fade",
+          "label": "Fade"
+        },
+        {
+          "key": "flipknife_freehand",
+          "label": "Freehand"
+        },
+        {
+          "key": "flipknife_gammadoppler",
+          "label": "Gammadoppler"
+        },
+        {
+          "key": "flipknife_lore",
+          "label": "Lore"
+        },
+        {
+          "key": "flipknife_ultrafiolet",
+          "label": "Ultrafiolet"
+        },
+        {
+          "key": "flipknife_vanilla",
+          "label": "Vanilla"
+        }
+      ]
+    },
+    {
+      "id": 48,
+      "name": "G3SG1",
+      "label": "G3SG1",
+      "category": "snipers",
+      "skins": [
+        {
+          "key": "g3sg1_keepingtabs",
+          "label": "Keepingtabs"
+        },
+        {
+          "key": "g3sg1_ventilator",
+          "label": "Ventilator"
+        }
+      ]
+    },
+    {
+      "id": 24,
+      "name": "Galil",
+      "label": "Galil",
+      "category": "rifles",
+      "skins": [
+        {
+          "key": "galil_black_sand",
+          "label": "Black Sand"
+        },
+        {
+          "key": "galil_cerberus",
+          "label": "Cerberus"
+        },
+        {
+          "key": "galil_eco",
+          "label": "Eco"
+        },
+        {
+          "key": "galilar_waterterrace",
+          "label": "Waterterrace"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "name": "Glock",
+      "label": "Glock",
+      "category": "pistols",
+      "skins": [
+        {
+          "key": "glock_bulletqueen",
+          "label": "Bulletqueen"
+        },
+        {
+          "key": "glock_fade",
+          "label": "Fade"
+        },
+        {
+          "key": "glock_franklin",
+          "label": "Franklin"
+        },
+        {
+          "key": "glock_ghostprotocol",
+          "label": "Ghostprotocol"
+        },
+        {
+          "key": "glock_neonoir",
+          "label": "Neonoir"
+        },
+        {
+          "key": "glock_oxideblaze",
+          "label": "Oxideblaze"
+        },
+        {
+          "key": "glock_pathfinder",
+          "label": "Pathfinder"
+        },
+        {
+          "key": "glock_reactor",
+          "label": "Reactor"
+        },
+        {
+          "key": "glock_royallegion",
+          "label": "Royallegion"
+        },
+        {
+          "key": "glock_shinobu",
+          "label": "Shinobu"
+        },
+        {
+          "key": "glock_tracelock",
+          "label": "Tracelock"
+        },
+        {
+          "key": "glock_vogue",
+          "label": "Vogue"
+        },
+        {
+          "key": "glock_warhawk",
+          "label": "Warhawk"
+        },
+        {
+          "key": "glock_water_elemental",
+          "label": "Water Elemental"
+        },
+        {
+          "key": "glock_weasel",
+          "label": "Weasel"
+        },
+        {
+          "key": "glock_winterized",
+          "label": "Winterized"
+        }
+      ]
+    },
+    {
+      "id": 27,
+      "name": "GutKnife",
+      "label": "GutKnife",
+      "category": "knives",
+      "skins": [
+        {
+          "key": "gutknife_autotronic",
+          "label": "Autotronic"
+        },
+        {
+          "key": "gutknife_blacklaminate",
+          "label": "Blacklaminate"
+        },
+        {
+          "key": "gutknife_brightwater",
+          "label": "Brightwater"
+        },
+        {
+          "key": "gutknife_freehand",
+          "label": "Freehand"
+        },
+        {
+          "key": "gutknife_gammadoppler",
+          "label": "Gammadoppler"
+        },
+        {
+          "key": "gutknife_lore",
+          "label": "Lore"
+        },
+        {
+          "key": "gutknife_ruby",
+          "label": "Ruby"
+        },
+        {
+          "key": "gutknife_sweet",
+          "label": "Sweet"
+        },
+        {
+          "key": "gutknife_taruk",
+          "label": "Taruk"
+        },
+        {
+          "key": "gutknife_vanilla",
+          "label": "Vanilla"
+        }
+      ]
+    },
+    {
+      "id": 30,
+      "name": "HEGrenade",
+      "label": "HEGrenade",
+      "category": "other",
+      "skins": []
+    },
+    {
+      "id": 26,
+      "name": "Huntsman",
+      "label": "Huntsman",
+      "category": "knives",
+      "skins": [
+        {
+          "key": "huntsman_lore",
+          "label": "Lore"
+        },
+        {
+          "key": "huntsman_vanilla",
+          "label": "Vanilla"
+        },
+        {
+          "key": "huntsman_water",
+          "label": "Water"
+        }
+      ]
+    },
+    {
+      "id": 51,
+      "name": "IncGrenade",
+      "label": "IncGrenade",
+      "category": "other",
+      "skins": []
+    },
+    {
+      "id": 4,
+      "name": "Karambit",
+      "label": "Karambit",
+      "category": "knives",
+      "skins": [
+        {
+          "key": "karambit_autotranoic",
+          "label": "Autotranoic"
+        },
+        {
+          "key": "karambit_blacklaminate",
+          "label": "Blacklaminate"
+        },
+        {
+          "key": "karambit_brightwater",
+          "label": "Brightwater"
+        },
+        {
+          "key": "karambit_crimsonweb",
+          "label": "Crimsonweb"
+        },
+        {
+          "key": "karambit_doppler",
+          "label": "Doppler"
+        },
+        {
+          "key": "karambit_fade",
+          "label": "Fade"
+        },
+        {
+          "key": "karambit_freehand",
+          "label": "Freehand"
+        },
+        {
+          "key": "karambit_gammadoppler",
+          "label": "Gammadoppler"
+        },
+        {
+          "key": "karambit_lore",
+          "label": "Lore"
+        },
+        {
+          "key": "karambit_marblefade",
+          "label": "Marblefade"
+        },
+        {
+          "key": "karambit_tiger",
+          "label": "Tiger"
+        },
+        {
+          "key": "karambit_vanilla",
+          "label": "Vanilla"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "name": "KnifeCT",
+      "label": "Стандартный нож CT/TR",
+      "category": "knives",
+      "skins": []
+    },
+    {
+      "id": 14,
+      "name": "Kukri",
+      "label": "Kukri",
+      "category": "knives",
+      "skins": [
+        {
+          "key": "kukri_vanilla",
+          "label": "Vanilla"
+        }
+      ]
+    },
+    {
+      "id": 0,
+      "name": "M4A1",
+      "label": "M4A4 (M4A1 ID)",
+      "category": "rifles",
+      "skins": [
+        {
+          "key": "m4a4_aeoliandark",
+          "label": "Aeoliandark"
+        },
+        {
+          "key": "m4a4_asiimov",
+          "label": "Asiimov"
+        },
+        {
+          "key": "m4a4_cybersecurity",
+          "label": "Cybersecurity"
+        },
+        {
+          "key": "m4a4_darkoperative",
+          "label": "Darkoperative"
+        },
+        {
+          "key": "m4a4_dragonking",
+          "label": "Dragonking"
+        },
+        {
+          "key": "m4a4_emperor",
+          "label": "Emperor"
+        },
+        {
+          "key": "m4a4_hellfire",
+          "label": "Hellfire"
+        },
+        {
+          "key": "m4a4_horus",
+          "label": "Horus"
+        },
+        {
+          "key": "m4a4_howl",
+          "label": "Howl"
+        },
+        {
+          "key": "m4a4_industrya",
+          "label": "Industrya"
+        },
+        {
+          "key": "m4a4_neonoir",
+          "label": "Neonoir"
+        },
+        {
+          "key": "m4a4_polymag",
+          "label": "Polymag"
+        },
+        {
+          "key": "m4a4_poseidon",
+          "label": "Poseidon"
+        },
+        {
+          "key": "m4a4_temukau",
+          "label": "Temukau"
+        },
+        {
+          "key": "m4a4_tooth_fairy",
+          "label": "Tooth Fairy"
+        },
+        {
+          "key": "m4a4_zirka",
+          "label": "Zirka"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "name": "M4A1S",
+      "label": "M4A1S",
+      "category": "rifles",
+      "skins": [
+        {
+          "key": "m4a1s_briefing",
+          "label": "Briefing"
+        },
+        {
+          "key": "m4a1s_chantico",
+          "label": "Chantico"
+        },
+        {
+          "key": "m4a1s_cyrex",
+          "label": "Cyrex"
+        },
+        {
+          "key": "m4a1s_decimator",
+          "label": "Decimator"
+        },
+        {
+          "key": "m4a1s_fatalglitch",
+          "label": "Fatalglitch"
+        },
+        {
+          "key": "m4a1s_hotrod",
+          "label": "Hotrod"
+        },
+        {
+          "key": "m4a1s_hyper_beast",
+          "label": "Hyper Beast"
+        },
+        {
+          "key": "m4a1s_masterpiece",
+          "label": "Masterpiece"
+        },
+        {
+          "key": "m4a1s_next",
+          "label": "Next"
+        },
+        {
+          "key": "m4a1s_nightmare",
+          "label": "Nightmare"
+        },
+        {
+          "key": "m4a1s_playertwo",
+          "label": "Playertwo"
+        },
+        {
+          "key": "m4a1s_printstream",
+          "label": "Printstream"
+        },
+        {
+          "key": "m4a1s_solitude",
+          "label": "Solitude"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "M9Bayonet",
+      "label": "M9Bayonet",
+      "category": "knives",
+      "skins": [
+        {
+          "key": "m9bayonet_autotronic",
+          "label": "Autotronic"
+        },
+        {
+          "key": "m9bayonet_blacklaminate",
+          "label": "Blacklaminate"
+        },
+        {
+          "key": "m9bayonet_brightwater",
+          "label": "Brightwater"
+        },
+        {
+          "key": "m9bayonet_doppler",
+          "label": "Doppler"
+        },
+        {
+          "key": "m9bayonet_flame",
+          "label": "Flame"
+        },
+        {
+          "key": "m9bayonet_freehand",
+          "label": "Freehand"
+        },
+        {
+          "key": "m9bayonet_gammadoppler",
+          "label": "Gammadoppler"
+        },
+        {
+          "key": "m9bayonet_lore",
+          "label": "Lore"
+        },
+        {
+          "key": "m9bayonet_sapphire",
+          "label": "Sapphire"
+        },
+        {
+          "key": "m9bayonet_vanilla",
+          "label": "Vanilla"
+        }
+      ]
+    },
+    {
+      "id": 25,
+      "name": "Mac10",
+      "label": "Mac10",
+      "category": "smg",
+      "skins": [
+        {
+          "key": "mac10_discotech",
+          "label": "Discotech"
+        },
+        {
+          "key": "mac10_neonrider",
+          "label": "Neonrider"
+        },
+        {
+          "key": "mac10_propaganda",
+          "label": "Propaganda"
+        },
+        {
+          "key": "mac10_snowsplash",
+          "label": "Snowsplash"
+        },
+        {
+          "key": "mac10_stalker",
+          "label": "Stalker"
+        },
+        {
+          "key": "mac10_ultraviolet",
+          "label": "Ultraviolet"
+        },
+        {
+          "key": "mac10_videocam",
+          "label": "Videocam"
+        }
+      ]
+    },
+    {
+      "id": 46,
+      "name": "MAG7",
+      "label": "MAG7",
+      "category": "heavy",
+      "skins": [
+        {
+          "key": "mag7_justice",
+          "label": "Justice"
+        },
+        {
+          "key": "mag7_magnitude",
+          "label": "Magnitude"
+        },
+        {
+          "key": "mag7_petroglyph",
+          "label": "Petroglyph"
+        }
+      ]
+    },
+    {
+      "id": 50,
+      "name": "Molotov",
+      "label": "Molotov",
+      "category": "other",
+      "skins": []
+    },
+    {
+      "id": 38,
+      "name": "MP5SD",
+      "label": "MP5SD",
+      "category": "smg",
+      "skins": [
+        {
+          "key": "mp5sd_desertstrike",
+          "label": "Desertstrike"
+        },
+        {
+          "key": "mp5sd_focus",
+          "label": "Focus"
+        },
+        {
+          "key": "mp5sd_gauss",
+          "label": "Gauss"
+        }
+      ]
+    },
+    {
+      "id": 37,
+      "name": "MP7",
+      "label": "MP7",
+      "category": "smg",
+      "skins": [
+        {
+          "key": "mp7_base2",
+          "label": "Base2"
+        },
+        {
+          "key": "mp7_bloodsport",
+          "label": "Bloodsport"
+        },
+        {
+          "key": "mp7_smokingkills",
+          "label": "Smokingkills"
+        },
+        {
+          "key": "mp7_urbanhazard",
+          "label": "Urbanhazard"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "name": "MP9",
+      "label": "MP9",
+      "category": "smg",
+      "skins": [
+        {
+          "key": "mp9_capillary",
+          "label": "Capillary"
+        },
+        {
+          "key": "mp9_deadlypoison",
+          "label": "Deadlypoison"
+        },
+        {
+          "key": "mp9_dizzy",
+          "label": "Dizzy"
+        },
+        {
+          "key": "mp9_goo",
+          "label": "Goo"
+        },
+        {
+          "key": "mp9_hydra",
+          "label": "Hydra"
+        },
+        {
+          "key": "mp9_modest",
+          "label": "Modest"
+        },
+        {
+          "key": "mp9_ruby_poison_dart",
+          "label": "Ruby Poison Dart"
+        },
+        {
+          "key": "mp9_spyprototype",
+          "label": "Spyprototype"
+        },
+        {
+          "key": "mp9_starlight",
+          "label": "Starlight"
+        },
+        {
+          "key": "mp9_wildlily",
+          "label": "Wildlily"
+        }
+      ]
+    },
+    {
+      "id": 49,
+      "name": "Negev",
+      "label": "Negev",
+      "category": "heavy",
+      "skins": [
+        {
+          "key": "negev_dazzle",
+          "label": "Dazzle"
+        },
+        {
+          "key": "negev_desertstrike",
+          "label": "Desertstrike"
+        },
+        {
+          "key": "negev_dropme",
+          "label": "Dropme"
+        },
+        {
+          "key": "negev_prototype",
+          "label": "Prototype"
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "name": "Nomad",
+      "label": "Nomad",
+      "category": "knives",
+      "skins": [
+        {
+          "key": "nomad_fade",
+          "label": "Fade"
+        },
+        {
+          "key": "nomad_slaughter",
+          "label": "Slaughter"
+        },
+        {
+          "key": "nomad_vanilla",
+          "label": "Vanilla"
+        }
+      ]
+    },
+    {
+      "id": 35,
+      "name": "Nova",
+      "label": "Nova",
+      "category": "heavy",
+      "skins": [
+        {
+          "key": "nova_exo",
+          "label": "Exo"
+        },
+        {
+          "key": "nova_koi",
+          "label": "Koi"
+        },
+        {
+          "key": "nova_ocular",
+          "label": "Ocular"
+        },
+        {
+          "key": "nova_smartgun",
+          "label": "Smartgun"
+        }
+      ]
+    },
+    {
+      "id": 43,
+      "name": "P2000",
+      "label": "P2000",
+      "category": "pistols",
+      "skins": [
+        {
+          "key": "p2000_acidetched",
+          "label": "Acidetched"
+        },
+        {
+          "key": "p2000_fireelemental",
+          "label": "Fireelemental"
+        },
+        {
+          "key": "p2000_imperialdragon",
+          "label": "Imperialdragon"
+        },
+        {
+          "key": "p2000_ivory",
+          "label": "Ivory"
+        }
+      ]
+    },
+    {
+      "id": 29,
+      "name": "P250",
+      "label": "P250",
+      "category": "pistols",
+      "skins": [
+        {
+          "key": "p250_asiimov",
+          "label": "Asiimov"
+        },
+        {
+          "key": "p250_nuclear",
+          "label": "Nuclear"
+        },
+        {
+          "key": "p250_sleet",
+          "label": "Sleet"
+        },
+        {
+          "key": "p250_supernova",
+          "label": "Supernova"
+        }
+      ]
+    },
+    {
+      "id": 34,
+      "name": "P90",
+      "label": "P90",
+      "category": "smg",
+      "skins": [
+        {
+          "key": "p90_asiimov",
+          "label": "Asiimov"
+        },
+        {
+          "key": "p90_deathgaze",
+          "label": "Deathgaze"
+        },
+        {
+          "key": "p90_grim",
+          "label": "Grim"
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "name": "ParacodeKnife",
+      "label": "ParacodeKnife",
+      "category": "knives",
+      "skins": [
+        {
+          "key": "paracod_fade",
+          "label": "Fade"
+        },
+        {
+          "key": "paracod_slaughter",
+          "label": "Slaughter"
+        },
+        {
+          "key": "paracod_vanilla",
+          "label": "Vanilla"
+        }
+      ]
+    },
+    {
+      "id": 47,
+      "name": "SawedOff",
+      "label": "SawedOff",
+      "category": "heavy",
+      "skins": [
+        {
+          "key": "sawedoff_analoginput",
+          "label": "Analoginput"
+        },
+        {
+          "key": "sawedoff_apocalypto",
+          "label": "Apocalypto"
+        },
+        {
+          "key": "sawedoff_limelight",
+          "label": "Limelight"
+        }
+      ]
+    },
+    {
+      "id": 40,
+      "name": "SCAR20",
+      "label": "SCAR20",
+      "category": "snipers",
+      "skins": [
+        {
+          "key": "scar20_arcticcamopanels",
+          "label": "Arcticcamopanels"
+        },
+        {
+          "key": "scar20_caged",
+          "label": "Caged"
+        },
+        {
+          "key": "scar20_enforcer",
+          "label": "Enforcer"
+        },
+        {
+          "key": "scar20_powercore",
+          "label": "Powercore"
+        }
+      ]
+    },
+    {
+      "id": 42,
+      "name": "SG553",
+      "label": "SG553",
+      "category": "rifles",
+      "skins": [
+        {
+          "key": "sg553_berrygelcoat",
+          "label": "Berrygelcoat"
+        },
+        {
+          "key": "sg553_darkwing",
+          "label": "Darkwing"
+        },
+        {
+          "key": "sg553_triarch",
+          "label": "Triarch"
+        }
+      ]
+    },
+    {
+      "id": 19,
+      "name": "ShadowDaggers",
+      "label": "ShadowDaggers",
+      "category": "knives",
+      "skins": [
+        {
+          "key": "shadowdaggers_default",
+          "label": "Default"
+        },
+        {
+          "key": "shadowdaggers_gammadoppler",
+          "label": "Gammadoppler"
+        }
+      ]
+    },
+    {
+      "id": 21,
+      "name": "Skeleton",
+      "label": "Skeleton",
+      "category": "knives",
+      "skins": [
+        {
+          "key": "skeleton_casehardened",
+          "label": "Casehardened"
+        },
+        {
+          "key": "skeleton_damascussteel",
+          "label": "Damascussteel"
+        },
+        {
+          "key": "skeleton_fade",
+          "label": "Fade"
+        },
+        {
+          "key": "skeleton_tiger",
+          "label": "Tiger"
+        },
+        {
+          "key": "skeleton_ultraviolet",
+          "label": "Ultraviolet"
+        },
+        {
+          "key": "skeleton_vanilla",
+          "label": "Vanilla"
+        }
+      ]
+    },
+    {
+      "id": 32,
+      "name": "SmokeGrenade",
+      "label": "SmokeGrenade",
+      "category": "other",
+      "skins": []
+    },
+    {
+      "id": 28,
+      "name": "SSG08",
+      "label": "SSG08",
+      "category": "snipers",
+      "skins": [
+        {
+          "key": "ssg08_abyss",
+          "label": "Abyss"
+        },
+        {
+          "key": "ssg08_detour",
+          "label": "Detour"
+        },
+        {
+          "key": "ssg08_dragonfire",
+          "label": "Dragonfire"
+        },
+        {
+          "key": "ssg08_feverdream",
+          "label": "Feverdream"
+        },
+        {
+          "key": "ssg08_sanscomic",
+          "label": "Sanscomic"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "name": "Stiletto",
+      "label": "Stiletto",
+      "category": "knives",
+      "skins": [
+        {
+          "key": "stiletto_tiger",
+          "label": "Tiger"
+        },
+        {
+          "key": "stiletto_ultrafiolet",
+          "label": "Ultrafiolet"
+        },
+        {
+          "key": "stiletto_vanilla",
+          "label": "Vanilla"
+        }
+      ]
+    },
+    {
+      "id": 23,
+      "name": "Talon",
+      "label": "Talon",
+      "category": "knives",
+      "skins": [
+        {
+          "key": "talon_crimsonweb",
+          "label": "Crimsonweb"
+        },
+        {
+          "key": "talon_doppler",
+          "label": "Doppler"
+        },
+        {
+          "key": "talon_fade",
+          "label": "Fade"
+        },
+        {
+          "key": "talon_marblefade",
+          "label": "Marblefade"
+        },
+        {
+          "key": "talon_slaughter",
+          "label": "Slaughter"
+        },
+        {
+          "key": "talon_tigertooth",
+          "label": "Tigertooth"
+        },
+        {
+          "key": "talon_vanilla",
+          "label": "Vanilla"
+        }
+      ]
+    },
+    {
+      "id": 52,
+      "name": "Taser",
+      "label": "Taser",
+      "category": "other",
+      "skins": []
+    },
+    {
+      "id": 33,
+      "name": "Tec9",
+      "label": "Tec9",
+      "category": "pistols",
+      "skins": [
+        {
+          "key": "tec9_fuelinjector",
+          "label": "Fuelinjector"
+        },
+        {
+          "key": "tec9_perimeter",
+          "label": "Perimeter"
+        },
+        {
+          "key": "tec9_whiteout",
+          "label": "Whiteout"
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "name": "UMP45",
+      "label": "UMP45",
+      "category": "smg",
+      "skins": [
+        {
+          "key": "ump45_bismuth",
+          "label": "Bismuth"
+        },
+        {
+          "key": "ump45_grand_prix",
+          "label": "Grand Prix"
+        },
+        {
+          "key": "ump45_labyrinth",
+          "label": "Labyrinth"
+        },
+        {
+          "key": "ump45_primalsaber",
+          "label": "Primalsaber"
+        },
+        {
+          "key": "ump45_wildchild",
+          "label": "Wildchild"
+        },
+        {
+          "key": "ump_neonoir",
+          "label": "Neonoir"
+        },
+        {
+          "key": "ump_riot",
+          "label": "Riot"
+        },
+        {
+          "key": "ump_scaffold",
+          "label": "Scaffold"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "USP",
+      "label": "USP",
+      "category": "pistols",
+      "skins": [
+        {
+          "key": "usp_blueprint",
+          "label": "Blueprint"
+        },
+        {
+          "key": "usp_cortex",
+          "label": "Cortex"
+        },
+        {
+          "key": "usp_cyrex",
+          "label": "Cyrex"
+        },
+        {
+          "key": "usp_flashback",
+          "label": "Flashback"
+        },
+        {
+          "key": "usp_guardian",
+          "label": "Guardian"
+        },
+        {
+          "key": "usp_killconfirm",
+          "label": "Killconfirm"
+        },
+        {
+          "key": "usp_monstermasup",
+          "label": "Monstermasup"
+        },
+        {
+          "key": "usp_night_ops",
+          "label": "Night Ops"
+        },
+        {
+          "key": "usp_orion",
+          "label": "Orion"
+        },
+        {
+          "key": "usp_printstream",
+          "label": "Printstream"
+        },
+        {
+          "key": "usp_spiralglitch",
+          "label": "Spiralglitch"
+        },
+        {
+          "key": "usp_stainless",
+          "label": "Stainless"
+        },
+        {
+          "key": "usp_tickettohell",
+          "label": "Tickettohell"
+        },
+        {
+          "key": "usp_torque",
+          "label": "Torque"
+        }
+      ]
+    },
+    {
+      "id": 39,
+      "name": "XM1014",
+      "label": "XM1014",
+      "category": "heavy",
+      "skins": [
+        {
+          "key": "xm1014_blacksite",
+          "label": "Blacksite"
+        },
+        {
+          "key": "xm1014_monstermelt",
+          "label": "Monstermelt"
+        },
+        {
+          "key": "xm1014_slipstream",
+          "label": "Slipstream"
+        }
+      ]
+    }
+  ],
+  "skinCount": 330
+}

@@ -1,29 +1,34 @@
-# Flame v6 — experimental controls
+# Flame v7
 
-ESP v5 is retained. Menu: two taps with three fingers. Enable the module after match loading; disable before the next loading screen. New AIM and No Recoil switches default OFF. These additions have not been tested on the phone.
+A native arm64 in-process module for the supplied CounterFlame 1.4.1 build 7 IPA. No fixed game addresses or hard-coded field offsets. Menu and additional gameplay controls need on-device testing.
 
-## Knife and skins
+## Menu
 
-Take a knife in hand as a living local player, then use Knife → Butterfly (ID 8). The supplied metadata's byte enum constants are KnifeCT=7 and Butterfly=8. StatTrak is a reference class, not a value type. Butterfly material assets are present in the supplied catalog.
+Sand/cream panel with a gray sidebar, Visual / Aim / Misc / Skins / Config tabs, draggable title bar, close button and miniature ESP preview. Open using two taps with three fingers. Configuration saves locally under a namespaced UserDefaults key; loading never enables the module automatically.
 
-The module searches loaded WeaponParameters for an actual enum ID 8, with a fallback to ResourceUtility.LoadWeaponParameters("Butterfly"). A result with any other ID is rejected. It invokes the game's complete CreateWeapon routine rather than overwriting the ID on a default knife. All seven parameter positions are checked at runtime before invocation: WeaponParameters, String, StatTrak, Boolean, a non-value/non-by-reference sticker collection reference, Int32, Int32. The optional sticker argument is null; its specific collection type is not assumed. The original parameters and arms instance are retained for the restore button. A delayed read displays the observed current ID. An accepted call alone is not confirmation that the model and animation changed correctly.
+Visual controls: enemy-only filter, corner or normal boxes, fill, skeleton, head markers, HP text, names, world-unit distance, tracers, line thickness, color, distance limit, crosshair and actual ESP callback FPS. Preview is illustrative and is not a live game image.
 
-Vanilla/Fade buttons call the confirmed two-argument SetSkin overload only while current WeaponId is 8. Material keys are based on the actual catalog's butterfly_vanilla and butterfly_fade folders. Material application and animation correctness still require device testing. These methods may perform normal game appearance synchronization; their native implementations have not been fully traced. No persistent inventory grant or ownership change is implemented.
+## Gameplay controls: experimental and initially off
 
-## Ordinary AIM (experimental)
+- AIM: previous local camera steering while holding fire; radius and smoothing controls. No visibility check. Silent Aim remains unimplemented.
+- No Recoil: previous named local recoil/camera parameters.
+- No Spread: named local accuracy/additive/air penalty, live RecoilData dispersion, pellet spread and AirInaccuracy vectors. Reads the engine's NextShotSpread as a diagnostic; zero server-side spread is not guaranteed.
+- SpeedHack: scales PlayerMovement._speed from the captured game base, not from the already multiplied value. Range 1–3x. The server may clamp or correct travel.
+- Unlimited Ammo: replenishes a separate live Ammunition instance from actual WeaponParameters capacity through Ammunition.Set(Int32, Int32). Refuses to write if the live/config objects are the same or capacities are invalid. Does not grant account inventory or guarantee server-side unlimited shots.
+- Fixed camera FOV: 60–120 degrees; restores the last game-provided FOV when disabled.
 
-While the real local shoot button is pressed, selects an identified enemy's confirmed head Transform within a configurable screen radius. Adjusts local PlayerLock pitch and body yaw with smoothing. Checks field types, float finiteness, pitch/camera convention and look limit before writing. Disabled while observing, dead, or with menu open. No line-of-sight test is implemented, so occluded targets can be selected. This is visible camera steering, not Silent Aim.
+Saved float/vector modifications have separate recoil/spread/movement groups. Disabling one does not undo another. Restoration only writes when the current value still matches this module's last applied value. Native faults remain outside managed exception handling.
 
-## No Recoil (experimental)
+## SkinChanger
 
-Zeroes the local weapon RecoilParameters' horizontal/vertical ranges, camera deviation and view kick through named IL2CPP fields whose types are checked as System.Single. Also clears selected transient local arms/view kick values. Configuration values are saved and restored when disabled, paused, backgrounded or observing, provided the value is still zero. It does not remove unrelated random spread or guarantee server acceptance.
+SkinCatalog.json is generated from the supplied WeaponId metadata constants and bundled Addressables paths: 52 weapon/item entries, 330 unique material keys. Some entries, such as grenades, have no skin materials. Legacy naming aliases map catalog prefixes (for example DesertEagle → deagle, M4A1 → m4a4); live weapon IDs are checked before material calls.
 
-## Silent Aim status
+Search supports weapon and finish names; category tabs narrow the list. Applying a material requires that exact selected weapon ID in hand. It does not replace AK gameplay with AWP parameters. Knife-model replacement is separate and works from any knife held by the living local player, without a CT-only restriction. Requested model configurations must report the selected ID before the normal game CreateWeapon routine is invoked. The seven-argument signature is checked at runtime. Normal game routines may synchronize appearance; the module does not grant persistent ownership.
 
-Not implemented. Confirmed method names such as ArmsController.FireRay are not proof of a safe executable interception point or of server-side acceptance. No placeholder toggle is exposed.
+Material requests and delayed equipped-key readback distinguish a request from confirmation. Original nonempty material keys can be restored. A standard/default material without an explicit key may require restoring the knife model or changing round. Model/animation/material correctness is not proven by compilation.
 
-## Verification and limits
+## Validation
 
-All additional API symbols and game member names used here were checked against the supplied binary/metadata. No fixed addresses or guessed field offsets. GitHub compilation verifies the arm64 build, not runtime correctness. Managed exceptions in experimental controls disable those controls while retaining ESP; native faults cannot be caught this way. Revert to v5 if testing regresses behavior.
+CI runs portable grouped-restoration/speed-scaling tests with address/undefined-behavior sanitizers, builds the arm64 dylib and checks its architecture/dependencies. A separate optional job renders the actual UIKit menu in an iOS simulator. Simulator rendering exercises UI/catalog/property-list structure, not real game functions. Device performance and server acceptance remain unverified.
 
-No IPA or signing credentials are stored in this repository. Builds do not consume Apple App IDs.
+Enable the module after match loading and disable before the next loading screen. Active-scene changes pause it, but not every loading phase changes scenes. No game IPA or signing secrets are committed; builds consume no Apple App IDs.

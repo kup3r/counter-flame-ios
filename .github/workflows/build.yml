@@ -5,6 +5,11 @@ on:
     paths:
       - FlameMarkers.mm
       - FlameExtras.hpp
+      - FlameMenu.hpp
+      - FlameCatalog.hpp
+      - FlameOptions.hpp
+      - FlamePatch.hpp
+      - tests/**
       - .github/workflows/build.yml
 permissions:
   contents: read
@@ -13,6 +18,11 @@ jobs:
     runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
+      - name: Test grouped restore and speed scaling
+        run: |
+          mkdir -p build
+          clang++ -std=c++17 -fsanitize=address,undefined -fno-omit-frame-pointer tests/PatchTests.cpp -o build/patch-tests
+          build/patch-tests
       - name: Compile arm64 dylib
         run: |
           mkdir -p build
@@ -25,5 +35,18 @@ jobs:
         with:
           name: FlameMarkers-unsigned
           path: build/FlameMarkers.dylib
+  ui_preview:
+    needs: build
+    runs-on: macos-15-intel
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Render menu in iOS simulator
+        run: bash tests/preview.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FlameMenu-UIKit-preview
+          path: build/menu-*.png
 
 
