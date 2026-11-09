@@ -1,8 +1,10 @@
 #import <UIKit/UIKit.h>
+#import <QuartzCore/QuartzCore.h>
 #import <dlfcn.h>
 #include <cstring>
 #include <vector>
 #include <cmath>
+#include <utility>
 
 // In-process prototype. No fixed offsets, hooks, or writes to game state.
 namespace Runtime {
@@ -25,6 +27,7 @@ uintptr_t (*array_length)(P);
 int32_t (*class_value_size)(P,uint32_t*);
 uint32_t (*gchandle_new)(P,bool);
 void (*gchandle_free)(uint32_t);
+P (*gchandle_get_target)(uint32_t);
 P (*thread_current)();
 struct Roots {
     std::vector<uint32_t> handles;
@@ -51,7 +54,7 @@ bool load() {
     LOAD(runtime_invoke,"runtime_invoke"); LOAD(object_unbox,"object_unbox");
     LOAD(array_length,"array_length"); LOAD(class_value_size,"class_value_size");
     LOAD(gchandle_new,"gchandle_new"); LOAD(gchandle_free,"gchandle_free");
-    LOAD(thread_current,"thread_current");
+    LOAD(thread_current,"thread_current"); LOAD(gchandle_get_target,"gchandle_get_target");
 #undef LOAD
     dlclose(h); return ok;
 }
@@ -79,164 +82,248 @@ P invoke(P m,P self,P* args,bool& ok) {
     if(!ok) return nullptr;
     if(!m){ok=false;return nullptr;}
     P exception=nullptr; P result=runtime_invoke(m,self,args,&exception);
-    if(exception) { ok=false; NSLog(@"[Flame v2] Managed exception in %s",method_get_name(m)); }
+    if(exception) { ok=false; NSLog(@"[Flame v3] Managed exception in %s",method_get_name(m)); }
     if(result && !exception && roots) roots->hold(result);
     return exception?nullptr:result;
 }
 }
 
 struct V3 { float x,y,z; };
+static bool finiteV3(V3 v) { return std::isfinite(v.x)&&std::isfinite(v.y)&&std::isfinite(v.z); }
+struct Target { uint32_t player; std::vector<uint32_t> meshes; };
+struct Api {
+    Runtime::P player=nullptr, mesh=nullptr;
+    Runtime::P active=nullptr,loaded=nullptr,handle=nullptr,find=nullptr,main=nullptr;
+    Runtime::P tr=nullptr,pos=nullptr,project=nullptr,get=nullptr,alive=nullptr,width=nullptr,height=nullptr;
+    Runtime::P children=nullptr,bounds=nullptr,bmin=nullptr,bmax=nullptr,enabled=nullptr;
+    bool init() {
+        using namespace Runtime;
+        player=cls("","PlayerController"); mesh=cls("UnityEngine","SkinnedMeshRenderer");
+        P camera=cls("UnityEngine","Camera"),component=cls("UnityEngine","Component");
+        P object=cls("UnityEngine","Object"),scene=cls("UnityEngine.SceneManagement","Scene");
+        active=method(cls("UnityEngine.SceneManagement","SceneManager"),"GetActiveScene",0);
+        loaded=method(scene,"get_isLoaded",0);handle=method(scene,"get_handle",0);
+        find=method(object,"FindObjectsOfType",1,"System.Type");main=method(camera,"get_main",0);
+        tr=method(component,"get_transform",0);pos=method(cls("UnityEngine","Transform"),"get_position",0);
+        project=method(camera,"WorldToScreenPoint",1,"UnityEngine.Vector3");
+        get=method(cls("System","Array"),"GetValue",1,"System.Int32");
+        alive=method(object,"op_Implicit",1,"UnityEngine.Object");
+        width=method(cls("UnityEngine","Screen"),"get_width",0);height=method(cls("UnityEngine","Screen"),"get_height",0);
+        children=method(component,"GetComponentsInChildren",1,"System.Type");
+        bounds=method(cls("UnityEngine","Renderer"),"get_bounds",0);
+        enabled=method(cls("UnityEngine","Renderer"),"get_enabled",0);
+        bmin=method(cls("UnityEngine","Bounds"),"get_min",0);bmax=method(cls("UnityEngine","Bounds"),"get_max",0);
+        uint32_t align=0;P v=cls("UnityEngine","Vector3");
+        return player&&v&&class_value_size(v,&align)==sizeof(V3)&&active&&loaded&&handle&&find&&main&&tr&&pos&&project&&get&&alive&&width&&height;
+    }
+};
 @interface FlameMarkers : UIView <UIGestureRecognizerDelegate>
 @end
 @implementation FlameMarkers {
-    NSTimer* _timer;
+    CADisplayLink* _displayLink;
     std::vector<CGPoint> _points;
+    std::vector<CGRect> _boxes;
+    std::vector<Target> _targets;
+    Api _api;
     NSString* _status;
-    BOOL _ready;
-    BOOL _enabled;
+    BOOL _ready,_apiReady,_enabled;
     UIView* _panel;
     UITapGestureRecognizer* _menuGesture;
     UISwitch* _markerToggle;
     int _sceneHandle;
-    NSTimeInterval _settledAfter;
+    NSTimeInterval _settledAfter,_nextDiscovery;
 }
 - (instancetype)initWithFrame:(CGRect)frame {
     if((self=[super initWithFrame:frame])) {
         self.backgroundColor=UIColor.clearColor; self.userInteractionEnabled=YES;
         self.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight;
-        _status=@"Flame: waiting for IL2CPP";
-        _enabled=NO; _sceneHandle=-1;
-        _panel=[[UIView alloc] initWithFrame:CGRectMake(55,55,245,110)];
-        _panel.backgroundColor=[UIColor colorWithWhite:0.08 alpha:0.95];
-        _panel.layer.cornerRadius=12; _panel.hidden=YES;
+        _status=@"Flame v3: ESP off"; _sceneHandle=-1;
+        _panel=[[UIView alloc] initWithFrame:CGRectMake(55,55,245,160)];
+        _panel.backgroundColor=[UIColor colorWithWhite:0.08 alpha:0.95]; _panel.layer.cornerRadius=12;_panel.hidden=YES;
         UILabel* title=[[UILabel alloc] initWithFrame:CGRectMake(15,10,215,25)];
-        title.text=@"Flame · diagnostic v2"; title.textColor=UIColor.whiteColor;
-        [_panel addSubview:title];
+        title.text=@"Flame · ESP v3";title.textColor=UIColor.whiteColor;[_panel addSubview:title];
         UILabel* label=[[UILabel alloc] initWithFrame:CGRectMake(15,53,145,30)];
-        label.text=@"Player markers"; label.textColor=UIColor.whiteColor;
-        [_panel addSubview:label];
-        UISwitch* toggle=[[UISwitch alloc] initWithFrame:CGRectMake(175,53,50,30)];
-        _markerToggle=toggle;
-        toggle.on=NO; [toggle addTarget:self action:@selector(changeMarkers:) forControlEvents:UIControlEventValueChanged];
-        [_panel addSubview:toggle]; [self addSubview:_panel];
+        label.text=@"ESP boxes";label.textColor=UIColor.whiteColor;[_panel addSubview:label];
+        _markerToggle=[[UISwitch alloc] initWithFrame:CGRectMake(175,53,50,30)];
+        [_markerToggle addTarget:self action:@selector(changeMarkers:) forControlEvents:UIControlEventValueChanged];
+        [_panel addSubview:_markerToggle];
+        UISegmentedControl* rate=[[UISegmentedControl alloc] initWithItems:@[@"30 FPS",@"60 FPS"]];
+        rate.frame=CGRectMake(15,108,215,32);rate.selectedSegmentIndex=1;
+        rate.backgroundColor=UIColor.lightGrayColor;
+        [rate addTarget:self action:@selector(changeRate:) forControlEvents:UIControlEventValueChanged];[_panel addSubview:rate];
+        [self addSubview:_panel];
         _menuGesture=[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(toggleMenu)];
-        _menuGesture.numberOfTapsRequired=2; _menuGesture.numberOfTouchesRequired=3;
-        _menuGesture.cancelsTouchesInView=NO; _menuGesture.delegate=self;
-        _timer=[NSTimer scheduledTimerWithTimeInterval:0.5 target:self selector:@selector(sample) userInfo:nil repeats:YES];
-    } return self;
+        _menuGesture.numberOfTapsRequired=2;_menuGesture.numberOfTouchesRequired=3;
+        _menuGesture.cancelsTouchesInView=NO;_menuGesture.delegate=self;
+        _displayLink=[CADisplayLink displayLinkWithTarget:self selector:@selector(sample)];
+        _displayLink.preferredFramesPerSecond=60;
+        [_displayLink addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
+        _displayLink.paused=YES;
+    }return self;
+}
+- (void)clearTargets {
+    for(const Target& t:_targets) {
+        Runtime::gchandle_free(t.player);
+        for(uint32_t h:t.meshes) Runtime::gchandle_free(h);
+    }_targets.clear();_nextDiscovery=0;
 }
 - (void)didMoveToWindow {
-    [super didMoveToWindow];
-    [_menuGesture.view removeGestureRecognizer:_menuGesture];
+    [super didMoveToWindow];[_menuGesture.view removeGestureRecognizer:_menuGesture];
     if(self.window) [self.window addGestureRecognizer:_menuGesture];
+    else { _enabled=NO;_markerToggle.on=NO;_displayLink.paused=YES;[self clearTargets]; }
 }
 - (BOOL)gestureRecognizer:(UIGestureRecognizer*)a shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer*)b { return YES; }
 - (UIView*)hitTest:(CGPoint)point withEvent:(UIEvent*)event {
-    UIView* hit=[super hitTest:point withEvent:event];
-    return !_panel.hidden && [hit isDescendantOfView:_panel] ? hit : nil;
+    UIView* hit=[super hitTest:point withEvent:event];return !_panel.hidden&&[hit isDescendantOfView:_panel]?hit:nil;
 }
 - (void)toggleMenu { _panel.hidden=!_panel.hidden; }
+- (void)changeRate:(UISegmentedControl*)control { _displayLink.preferredFramesPerSecond=control.selectedSegmentIndex==0?30:60; }
 - (void)changeMarkers:(UISwitch*)toggle {
-    _enabled=toggle.on; _sceneHandle=-1;
-    _settledAfter=NSProcessInfo.processInfo.systemUptime+5;
-    NSLog(@"[Flame v2] Markers %@",_enabled?@"enabled":@"disabled");
+    [self clearTargets];_points.clear();_boxes.clear();_enabled=toggle.on;_sceneHandle=-1;
+    _settledAfter=NSProcessInfo.processInfo.systemUptime+5;_displayLink.paused=!_enabled;
+    _status=_enabled?@"Flame v3: waiting for scene":@"Flame v3: ESP off";[self setNeedsDisplay];
+}
+- (void)pauseWithStatus:(NSString*)status {
+    _enabled=NO;_markerToggle.on=NO;_displayLink.paused=YES;
+    [self clearTargets];_points.clear();_boxes.clear();_status=status;[self setNeedsDisplay];
+}
+- (BOOL)isAlive:(Runtime::P)object ok:(bool&)ok {
+    if(!object||!ok)return NO;
+    Runtime::P args[]={object};Runtime::P box=Runtime::invoke(_api.alive,nullptr,args,ok);
+    return box&&*static_cast<bool*>(Runtime::object_unbox(box));
+}
+- (void)discover:(bool&)ok {
+    using namespace Runtime;
+    [self clearTargets];
+    P type=type_get_object(class_get_type(_api.player));P args[]={type};P array=invoke(_api.find,nullptr,args,ok);
+    if(!ok||!array)return;
+    uintptr_t count=array_length(array);if(count>128){ok=false;return;}
+    for(int i=0;i<(int)count&&ok;i++) {
+        P index[]={&i};P player=invoke(_api.get,array,index,ok);
+        if(![self isAlive:player ok:ok])continue;
+        Target target{gchandle_new(player,true),{}};
+        if(_api.mesh&&_api.children&&_api.bounds&&_api.bmin&&_api.bmax&&_api.enabled) {
+            P meshType=type_get_object(class_get_type(_api.mesh));P childArgs[]={meshType};
+            P meshes=invoke(_api.children,player,childArgs,ok);
+            if(meshes&&ok) {
+                uintptr_t total=array_length(meshes);
+                // Refuse oversized hierarchies rather than doing unbounded per-frame work.
+                if(total<=16)for(int j=0;j<(int)total&&ok;j++) {
+                    P idx[]={&j};P mesh=invoke(_api.get,meshes,idx,ok);
+                    if([self isAlive:mesh ok:ok])target.meshes.push_back(gchandle_new(mesh,true));
+                }
+            }
+        }
+        _targets.push_back(std::move(target));
+    }
 }
 - (void)sample {
     using namespace Runtime;
-    _points.clear();
-    if(!_enabled){_status=@"Flame: markers off";[self setNeedsDisplay];return;}
-    if(!_ready) _ready=load();
-    if(!_ready){[self setNeedsDisplay];return;}
-    if(!NSThread.isMainThread || !thread_current()) {
-        _status=@"Flame v2: runtime thread unavailable";[self setNeedsDisplay];return;
+    _points.clear();_boxes.clear();
+    if(!_enabled)return;
+    if(UIApplication.sharedApplication.applicationState!=UIApplicationStateActive||!self.window) {
+        [self pauseWithStatus:@"Flame v3: paused in background"];return;
     }
-    if(UIApplication.sharedApplication.applicationState!=UIApplicationStateActive || !self.window) return;
-    RootScope managedRoots;
-    bool ok=true;
-    P sceneClass=cls("UnityEngine.SceneManagement","Scene");
-    P active=method(cls("UnityEngine.SceneManagement","SceneManager"),"GetActiveScene",0);
-    P loaded=method(sceneClass,"get_isLoaded",0), handle=method(sceneClass,"get_handle",0);
-    if(!active || !loaded || !handle) {
-        _status=@"Flame v2: scene methods unavailable";[self setNeedsDisplay];return;
-    }
-    P scene=invoke(active,nullptr,nullptr,ok);
-    if(!ok || !scene) {_status=@"Flame v2: no active scene";[self setNeedsDisplay];return;}
-    P sceneValue=object_unbox(scene);
-    if(!sceneValue) return;
-    P loadedBox=invoke(loaded,sceneValue,nullptr,ok);
-    P handleBox=invoke(handle,sceneValue,nullptr,ok);
-    if(!ok || !loadedBox || !handleBox) {_status=@"Flame v2: scene check failed";[self setNeedsDisplay];return;}
-    bool isLoaded=*static_cast<bool*>(object_unbox(loadedBox));
-    int currentHandle=*static_cast<int*>(object_unbox(handleBox));
+    if(!_ready)_ready=load();
+    if(!_ready){_status=@"Flame v3: waiting for runtime";[self setNeedsDisplay];return;}
+    if(!NSThread.isMainThread||!thread_current()) {[self pauseWithStatus:@"Flame v3: runtime thread unavailable"];return;}
+    if(!_apiReady)_apiReady=_api.init();
+    if(!_apiReady){[self pauseWithStatus:@"Flame v3: required methods unavailable"];return;}
+    RootScope frameRoots;bool ok=true;
+    P scene=invoke(_api.active,nullptr,nullptr,ok);
+    P sceneValue=scene?object_unbox(scene):nullptr;
+    if(!sceneValue){[self pauseWithStatus:@"Flame v3: no scene"];return;}
+    P loaded=invoke(_api.loaded,sceneValue,nullptr,ok),handle=invoke(_api.handle,sceneValue,nullptr,ok);
+    if(!ok||!loaded||!handle){[self pauseWithStatus:@"Flame v3: scene check failed"];return;}
+    bool isLoaded=*static_cast<bool*>(object_unbox(loaded));int current=*static_cast<int*>(object_unbox(handle));
     NSTimeInterval now=NSProcessInfo.processInfo.systemUptime;
-    if(!isLoaded || currentHandle!=_sceneHandle) {
-        _sceneHandle=currentHandle; _settledAfter=now+5;
+    if(!isLoaded||(_sceneHandle!=-1&&current!=_sceneHandle)) {
+        [self pauseWithStatus:@"Flame v3: scene changed; enable after loading"];return;
     }
-    if(!isLoaded || now<_settledAfter) {
-        _status=@"Flame v2: waiting for scene";[self setNeedsDisplay];return;
+    if(_sceneHandle==-1){_sceneHandle=current;_settledAfter=now+5;}
+    if(now<_settledAfter){_status=@"Flame v3: waiting for scene";[self setNeedsDisplay];return;}
+    if(now>=_nextDiscovery) {
+        [self discover:ok];_nextDiscovery=now+0.5;
+        if(!ok){[self pauseWithStatus:@"Flame v3: discovery exception"];return;}
     }
-    P player=cls("","PlayerController"), cameraClass=cls("UnityEngine","Camera");
-    P component=cls("UnityEngine","Component"), transform=cls("UnityEngine","Transform");
-    P vector=cls("UnityEngine","Vector3"); uint32_t align=0;
-    if(!vector || class_value_size(vector,&align)!=sizeof(V3)) {
-        _status=@"Flame: Vector3 layout unavailable"; [self setNeedsDisplay];return;
-    }
-    P find=method(cls("UnityEngine","Object"),"FindObjectsOfType",1,"System.Type");
-    P main=method(cameraClass,"get_main",0), tr=method(component,"get_transform",0);
-    P pos=method(transform,"get_position",0), project=method(cameraClass,"WorldToScreenPoint",1,"UnityEngine.Vector3");
-    P get=method(cls("System","Array"),"GetValue",1,"System.Int32");
-    if(!player||!find||!main||!tr||!pos||!project||!get) {
-        _status=@"Flame: required class/method unavailable";[self setNeedsDisplay];return;
-    }
-    P cam=invoke(main,nullptr,nullptr,ok);
-    if(!cam){_status=@"Flame: Camera.main unavailable";[self setNeedsDisplay];return;}
-    P type=type_get_object(class_get_type(player)); P findArgs[]={type};
-    P array=invoke(find,nullptr,findArgs,ok);
-    if(!ok||!array){_status=@"Flame: enumeration failed";[self setNeedsDisplay];return;}
-    // Unity screen coordinates are pixels with a bottom-left origin.
-    P width=method(cls("UnityEngine","Screen"),"get_width",0);
-    P height=method(cls("UnityEngine","Screen"),"get_height",0);
-    P wb=invoke(width,nullptr,nullptr,ok), hb=invoke(height,nullptr,nullptr,ok);
-    if(!ok||!wb||!hb) return;
+    P camera=invoke(_api.main,nullptr,nullptr,ok);
+    if(![self isAlive:camera ok:ok]){_status=@"Flame v3: no camera";[self setNeedsDisplay];return;}
+    P wb=invoke(_api.width,nullptr,nullptr,ok),hb=invoke(_api.height,nullptr,nullptr,ok);
+    if(!ok||!wb||!hb){[self pauseWithStatus:@"Flame v3: viewport error"];return;}
     int w=*static_cast<int*>(object_unbox(wb)),h=*static_cast<int*>(object_unbox(hb));
-    if(w<=0||h<=0) return;
-    uintptr_t count=array_length(array);
-    if(count>128){_status=@"Flame: unexpected object count";[self setNeedsDisplay];return;}
-    P alive=method(cls("UnityEngine","Object"),"op_Implicit",1,"UnityEngine.Object");
-    if(!alive){_status=@"Flame v2: object validity method unavailable";[self setNeedsDisplay];return;}
-    for(int i=0;i<(int)count && ok;i++) {
-        P args[]={&i}; P object=invoke(get,array,args,ok); if(!object) continue;
-        P aliveArgs[]={object}; P aliveBox=invoke(alive,nullptr,aliveArgs,ok);
-        if(!aliveBox || !*static_cast<bool*>(object_unbox(aliveBox))) continue;
-        P t=invoke(tr,object,nullptr,ok); if(!t) continue;
-        P box=invoke(pos,t,nullptr,ok); if(!box) continue;
-        V3 world; memcpy(&world,object_unbox(box),sizeof(world)); P projectArgs[]={&world};
-        P screen=invoke(project,cam,projectArgs,ok); if(!screen) continue;
-        V3 v; memcpy(&v,object_unbox(screen),sizeof(v));
-        if(std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z) && v.z>0 && v.x>=0 && v.x<=w && v.y>=0 && v.y<=h)
-            _points.push_back(CGPointMake(v.x/w*self.bounds.size.width,(1-v.y/h)*self.bounds.size.height));
+    if(w<=0||h<=0)return;
+    CGFloat sx=self.bounds.size.width/w,sy=self.bounds.size.height/h;
+    for(const Target& target:_targets) {
+        // Each target's temporary boxes and vectors are released after that target.
+        RootScope targetRoots;
+        P player=gchandle_get_target(target.player);
+        if(![self isAlive:player ok:ok])continue;
+        V3 lo{INFINITY,INFINITY,INFINITY},hi{-INFINITY,-INFINITY,-INFINITY};bool haveBounds=false;
+        for(uint32_t handle:target.meshes) {
+            P mesh=gchandle_get_target(handle);if(![self isAlive:mesh ok:ok])continue;
+            P enabled=invoke(_api.enabled,mesh,nullptr,ok);
+            if(!enabled||!*static_cast<bool*>(object_unbox(enabled)))continue;
+            P b=invoke(_api.bounds,mesh,nullptr,ok);if(!b)continue;
+            P raw=object_unbox(b);if(!raw){ok=false;break;}
+            P mn=invoke(_api.bmin,raw,nullptr,ok),mx=invoke(_api.bmax,raw,nullptr,ok);
+            if(!mn||!mx)continue;
+            V3 a,c;memcpy(&a,object_unbox(mn),sizeof(a));memcpy(&c,object_unbox(mx),sizeof(c));
+            if(!finiteV3(a)||!finiteV3(c)||a.x>c.x||a.y>c.y||a.z>c.z)continue;
+            lo={fminf(lo.x,a.x),fminf(lo.y,a.y),fminf(lo.z,a.z)};
+            hi={fmaxf(hi.x,c.x),fmaxf(hi.y,c.y),fmaxf(hi.z,c.z)};haveBounds=true;
+        }
+        if(!ok)break;
+        if(haveBounds) {
+            CGFloat left=INFINITY,top=INFINITY,right=-INFINITY,bottom=-INFINITY;bool visible=true;
+            for(int c=0;c<8;c++) {
+                V3 world{c&1?hi.x:lo.x,c&2?hi.y:lo.y,c&4?hi.z:lo.z};P args[]={&world};
+                P box=invoke(_api.project,camera,args,ok);if(!box){visible=false;break;}
+                V3 v;memcpy(&v,object_unbox(box),sizeof(v));
+                // Reject boxes crossing the near plane instead of drawing huge rectangles.
+                if(!finiteV3(v)||v.z<=0.05f){visible=false;break;}
+                CGFloat x=v.x*sx,y=(h-v.y)*sy;
+                left=fmin(left,x);right=fmax(right,x);top=fmin(top,y);bottom=fmax(bottom,y);
+            }
+            if(visible&&right>left&&bottom>top) {
+                CGRect rect=CGRectMake(left,top,right-left,bottom-top);
+                if(CGRectIntersectsRect(rect,self.bounds))_boxes.push_back(rect);
+            }
+        }else {
+            // Missing model bounds are shown as a dot, never an invented-size box.
+            P transform=invoke(_api.tr,player,nullptr,ok);if(!transform)continue;
+            P pos=invoke(_api.pos,transform,nullptr,ok);if(!pos)continue;
+            V3 world;memcpy(&world,object_unbox(pos),sizeof(world));if(!finiteV3(world))continue;
+            P args[]={&world};P box=invoke(_api.project,camera,args,ok);if(!box)continue;
+            V3 v;memcpy(&v,object_unbox(box),sizeof(v));
+            if(finiteV3(v)&&v.z>0&&v.x>=0&&v.x<=w&&v.y>=0&&v.y<=h)_points.push_back(CGPointMake(v.x*sx,(h-v.y)*sy));
+        }
+        if(!ok)break;
     }
-    if(!ok) { _enabled=NO; _markerToggle.on=NO; _points.clear(); }
-    _status=ok?[NSString stringWithFormat:@"Flame v2: %zu markers",_points.size()]:@"Flame v2: exception; paused";
+    if(!ok){[self pauseWithStatus:@"Flame v3: managed exception; paused"];return;}
+    _status=[NSString stringWithFormat:@"Flame v3: %zu boxes / %zu dots · target %ld FPS",_boxes.size(),_points.size(),(long)_displayLink.preferredFramesPerSecond];
     [self setNeedsDisplay];
 }
 - (void)drawRect:(CGRect)rect {
+    CGContextRef context=UIGraphicsGetCurrentContext();
+    CGContextSaveGState(context);CGContextClipToRect(context,self.bounds);
+    for(CGRect box:_boxes) {
+        [UIColor.blackColor setStroke];UIBezierPath* p=[UIBezierPath bezierPathWithRect:box];p.lineWidth=3;[p stroke];
+        [UIColor.cyanColor setStroke];p.lineWidth=1.3;[p stroke];
+    }
     [UIColor.cyanColor setStroke];
-    for(CGPoint p:_points) { UIBezierPath* path=[UIBezierPath bezierPathWithOvalInRect:CGRectMake(p.x-5,p.y-5,10,10)];path.lineWidth=2;[path stroke]; }
-    [_status drawAtPoint:CGPointMake(55,25) withAttributes:@{NSForegroundColorAttributeName:UIColor.cyanColor,NSFontAttributeName:[UIFont systemFontOfSize:13]}];
+    for(CGPoint point:_points){UIBezierPath* p=[UIBezierPath bezierPathWithOvalInRect:CGRectMake(point.x-3,point.y-3,6,6)];p.lineWidth=1.5;[p stroke];}
+    CGContextRestoreGState(context);
+    [_status drawAtPoint:CGPointMake(55,25) withAttributes:@{NSForegroundColorAttributeName:UIColor.cyanColor,NSFontAttributeName:[UIFont systemFontOfSize:12]}];
 }
 @end
 
 __attribute__((constructor)) static void startFlame() {
     dispatch_async(dispatch_get_main_queue(), ^{
-        // The timer waits for a visible foreground window; no new overlay window.
-        __block NSTimer* waiter=nil;
-        waiter=[NSTimer scheduledTimerWithTimeInterval:1 repeats:YES block:^(NSTimer* timer) {
+        [NSTimer scheduledTimerWithTimeInterval:1 repeats:YES block:^(NSTimer* timer) {
             for(UIScene* scene in UIApplication.sharedApplication.connectedScenes) {
-                if(scene.activationState!=UISceneActivationStateForegroundActive || ![scene isKindOfClass:UIWindowScene.class]) continue;
-                for(UIWindow* window in ((UIWindowScene*)scene).windows) if(window.isKeyWindow) {
-                    [window addSubview:[[FlameMarkers alloc] initWithFrame:window.bounds]];
-                    [timer invalidate]; waiter=nil; return;
+                if(scene.activationState!=UISceneActivationStateForegroundActive||![scene isKindOfClass:UIWindowScene.class])continue;
+                for(UIWindow* window in ((UIWindowScene*)scene).windows)if(window.isKeyWindow) {
+                    [window addSubview:[[FlameMarkers alloc] initWithFrame:window.bounds]];[timer invalidate];return;
                 }
             }
         }];

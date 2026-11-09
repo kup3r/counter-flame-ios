@@ -15,7 +15,7 @@ jobs:
       - name: Compile arm64 dylib
         run: |
           mkdir -p build
-          xcrun --sdk iphoneos clang++ -arch arm64 -miphoneos-version-min=15.0 -std=c++17 -fobjc-arc -dynamiclib FlameMarkers.mm -framework UIKit -framework Foundation -Wl,-install_name,@rpath/FlameMarkers.dylib -o build/FlameMarkers.dylib
+          xcrun --sdk iphoneos clang++ -arch arm64 -miphoneos-version-min=15.0 -std=c++17 -fobjc-arc -dynamiclib FlameMarkers.mm -framework UIKit -framework Foundation -framework QuartzCore -Wl,-install_name,@rpath/FlameMarkers.dylib -o build/FlameMarkers.dylib
       - name: Check architecture and dependencies
         run: |
           lipo -info build/FlameMarkers.dylib
