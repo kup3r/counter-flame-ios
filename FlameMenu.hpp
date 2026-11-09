@@ -44,6 +44,7 @@ static UIColor* FlameAccent(NSInteger index){switch(index){case 1:return [UIColo
     UITableView* _weaponTable;UITableView* _skinTable;UITextField* _search;UISegmentedControl* _categories;
     NSArray* _allWeapons;NSArray* _weapons;NSArray* _skins;NSDictionary* _selectedWeapon;NSDictionary* _selectedSkin;
     UIButton* _applySkin;UIButton* _applyModel;NSInteger _currentWeapon,_activeTab;
+    UISegmentedControl* _colorSegments;UISegmentedControl* _fpsSegments;
     CGPoint _dragOrigin;
 }
 - (UIColor*)textColor{return [UIColor colorWithRed:.27 green:.28 blue:.26 alpha:1];}
@@ -62,7 +63,7 @@ static UIColor* FlameAccent(NSInteger index){switch(index){case 1:return [UIColo
 }
 - (UISwitch*)option:(NSInteger)tag title:(NSString*)title x:(CGFloat)x y:(CGFloat)y width:(CGFloat)width parent:(UIView*)parent{
     UIButton* row=[UIButton buttonWithType:UIButtonTypeCustom];row.frame=CGRectMake(x,y,width,30);row.tag=1000+tag;[row addTarget:self action:@selector(toggleRow:) forControlEvents:UIControlEventTouchUpInside];[parent addSubview:row];
-    [self label:title frame:CGRectMake(x,y,width-44,28) size:12 bold:NO parent:parent];UISwitch* toggle=[[UISwitch alloc]initWithFrame:CGRectMake(x+width-49,y,51,31)];toggle.transform=CGAffineTransformMakeScale(.72,.72);toggle.tag=tag;
+    [self label:title frame:CGRectMake(x,y,width-64,28) size:12 bold:NO parent:parent];UISwitch* toggle=[[UISwitch alloc]initWithFrame:CGRectZero];[toggle sizeToFit];CGFloat effectiveWidth=toggle.bounds.size.width*.72;toggle.transform=CGAffineTransformMakeScale(.72,.72);toggle.center=CGPointMake(x+width-effectiveWidth/2-3,y+15);toggle.tag=tag;
     toggle.on=[_config[@"options"][FlameOptionKey(tag)] boolValue];toggle.onTintColor=FlameAccent(0);[toggle addTarget:self action:@selector(changeOption:) forControlEvents:UIControlEventValueChanged];[parent addSubview:toggle];_switches[@(tag)]=toggle;return toggle;
 }
 - (void)slider:(NSString*)key title:(NSString*)title min:(float)min max:(float)max x:(CGFloat)x y:(CGFloat)y width:(CGFloat)width parent:(UIView*)parent{
@@ -102,7 +103,7 @@ static UIColor* FlameAccent(NSInteger index){switch(index){case 1:return [UIColo
     [self section:@"ESP Preview" x:col+20 y:0 width:col parent:p];_preview=[[FlameMiniPreview alloc]initWithFrame:CGRectMake(col+20,30,col,151)];_preview.backgroundColor=[UIColor colorWithWhite:1 alpha:.3];_preview.layer.borderWidth=.5;_preview.layer.borderColor=[UIColor colorWithWhite:.7 alpha:1].CGColor;[p addSubview:_preview];
     [self option:Crosshair title:@"Прицел" x:col+20 y:190 width:col parent:p];[self option:FPSCounter title:@"Счётчик FPS" x:col+20 y:220 width:col parent:p];[self option:Debug title:@"Диагностика" x:col+20 y:250 width:col parent:p];
     [self slider:@"maxDistance" title:@"Макс. дистанция (u)" min:0 max:250 x:col+20 y:285 width:col parent:p];
-    [self label:@"Цвет противников" frame:CGRectMake(col+20,345,col,20) size:12 bold:NO parent:p];UISegmentedControl* colors=[[UISegmentedControl alloc]initWithItems:@[@"Cyan",@"Gold",@"Green",@"Red"]];colors.frame=CGRectMake(col+20,372,col,28);colors.selectedSegmentIndex=[_config[@"accent"] integerValue];[colors addTarget:self action:@selector(changeColor:) forControlEvents:UIControlEventValueChanged];[p addSubview:colors];return p;
+    [self label:@"Цвет противников" frame:CGRectMake(col+20,345,col,20) size:12 bold:NO parent:p];UISegmentedControl* colors=[[UISegmentedControl alloc]initWithItems:@[@"Cyan",@"Gold",@"Green",@"Red"]];_colorSegments=colors;colors.frame=CGRectMake(col+20,372,col,28);colors.selectedSegmentIndex=[_config[@"accent"] integerValue];[colors addTarget:self action:@selector(changeColor:) forControlEvents:UIControlEventValueChanged];[p addSubview:colors];return p;
 }
 - (UIView*)makeAim{
     UIScrollView* p=[self scrollPage];CGFloat w=p.bounds.size.width,col=(w-22)/2;p.contentSize=CGSizeMake(w,300);
@@ -133,7 +134,7 @@ static UIColor* FlameAccent(NSInteger index){switch(index){case 1:return [UIColo
     NSArray* names=@[@"Сохранить настройки",@"Загрузить настройки",@"Сбросить настройки",@"Выключить и восстановить"];
     for(NSInteger i=0;i<4;i++)[self button:names[i] frame:CGRectMake(0,i*43,w*.6,35) target:@selector(configAction:) tag:400+i parent:p];
     UILabel* note=[self label:@"Открыть/закрыть: два касания тремя пальцами.\nМеню можно перетаскивать за заголовок.\nСохранение не включает модуль при запуске." frame:CGRectMake(0,180,w,65) size:12 bold:NO parent:p];note.numberOfLines=0;
-    UISegmentedControl* fps=[[UISegmentedControl alloc]initWithItems:@[@"30 FPS",@"60 FPS"]];fps.frame=CGRectMake(0,255,w*.6,30);fps.selectedSegmentIndex=[_config[@"fps"] intValue]==30?0:1;[fps addTarget:self action:@selector(changeFPS:) forControlEvents:UIControlEventValueChanged];[p addSubview:fps];return p;
+    UISegmentedControl* fps=[[UISegmentedControl alloc]initWithItems:@[@"30 FPS",@"60 FPS"]];_fpsSegments=fps;fps.frame=CGRectMake(0,255,w*.6,30);fps.selectedSegmentIndex=[_config[@"fps"] intValue]==30?0:1;[fps addTarget:self action:@selector(changeFPS:) forControlEvents:UIControlEventValueChanged];[p addSubview:fps];return p;
 }
 - (void)showTab:(NSInteger)index{
     _activeTab=index;NSArray* titles=@[@"Visual / ESP",@"Aim / Weapon",@"Misc",@"SkinChanger",@"Config"];
@@ -157,7 +158,7 @@ static UIColor* FlameAccent(NSInteger index){switch(index){case 1:return [UIColo
 - (void)setRuntimeOption:(NSInteger)tag value:(BOOL)value{_switches[@(tag)].on=value;_config[@"options"][FlameOptionKey(tag)]=@(value);[self refreshPreview];}
 - (void)sync:(NSDictionary*)config{
     _config=[config mutableCopy];_config[@"options"]=[config[@"options"] mutableCopy];for(NSNumber* tag in _switches)[self setRuntimeOption:tag.integerValue value:[config[@"options"][FlameOptionKey(tag.integerValue)] boolValue]];
-    for(NSString* key in _sliders){_sliders[key].value=[config[key] floatValue];[self refreshValue:key];}[self refreshPreview];
+    for(NSString* key in _sliders){_sliders[key].value=[config[key] floatValue];[self refreshValue:key];}_colorSegments.selectedSegmentIndex=[config[@"accent"] integerValue];_fpsSegments.selectedSegmentIndex=[config[@"fps"] intValue]==30?0:1;[self refreshPreview];
 }
 - (void)searchChanged{
     NSString* query=[_search.text lowercaseString]?:@"";NSInteger category=_categories.selectedSegmentIndex;
