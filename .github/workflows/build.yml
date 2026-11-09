@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - FlameMarkers.mm
+      - FlameExtras.hpp
       - .github/workflows/build.yml
 permissions:
   contents: read
@@ -24,4 +25,5 @@ jobs:
         with:
           name: FlameMarkers-unsigned
           path: build/FlameMarkers.dylib
+
 

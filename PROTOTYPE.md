@@ -1,23 +1,29 @@
-# Flame ESP v5
+# Flame v6 — experimental controls
 
-Open menu: double tap with three fingers. ESP starts OFF. Enable after entering the match; disable before another loading screen. Active-scene changes and managed exceptions pause the module. Not every loading phase changes active scenes, so manual disabling remains required.
+ESP v5 is retained. Menu: two taps with three fingers. Enable the module after match loading; disable before the next loading screen. New AIM and No Recoil switches default OFF. These additions have not been tested on the phone.
 
-## Features
+## Knife and skins
 
-- Tight 2D joint-envelope boxes replace broad world-space renderer animation bounds. Padding covers skin around joints. These are not exact visible-mesh silhouettes.
-- Skeleton lines follow actual Transform parent relationships in SkinnedMeshRenderer.bones, bridging excluded intermediate parents. No fixed bone indices are used. A name-based heuristic omits finger/toe/twist/helper/weapon chains for clarity; unfamiliar bone names may remain.
-- Enemy-only switch defaults ON. Photon.Realtime.Player.get_Team is compared with the local player's team. During active spectating, SpectatorManager.CurrentPlayer provides the reference team instead. Unknown teams are excluded in enemy-only mode and counted in diagnostics. Local and watched actors are excluded.
-- Dead PlayerController objects are excluded using get_IsDeath.
-- Separate switches for boxes, skeleton, raw HP text, names, distance, tracers, and diagnostics.
-- Distances use Unity world units (u); the meter scale has not been verified.
-- 30/60 display-link target frequency; actual device rate/performance require testing. Object and rig discovery run at 2 Hz; cached joints are projected every display callback.
+Take a knife in hand as a living local player, then use Knife → Butterfly (ID 8). The supplied metadata's byte enum constants are KnifeCT=7 and Butterfly=8. StatTrak is a reference class, not a value type. Butterfly material assets are present in the supplied catalog.
 
-## Confirmed inputs
+The module searches loaded WeaponParameters for an actual enum ID 8, with a fallback to ResourceUtility.LoadWeaponParameters("Butterfly"). A result with any other ID is rejected. It invokes the game's complete CreateWeapon routine rather than overwriting the ID on a default knife. All seven parameter types are checked at runtime before invocation: WeaponParameters, String, StatTrak, Boolean, Byte[], Int32, Int32. The original parameters and arms instance are retained for the restore button. A delayed read displays the observed current ID. An accepted call alone is not confirmation that the model and animation changed correctly.
 
-The supplied metadata v31 contains zero-argument getters for PlayerController.get_Player/get_Health/get_IsDeath, PhotonNetwork.get_LocalPlayer, Photon.Realtime.Player.get_Team/get_ActorNumber/get_NickName, SpectatorManager.get_IsSpectating/get_CurrentPlayer, SkinnedMeshRenderer.get_bones and Transform.get_parent. The established animator/current skeleton/body getter path remains in use. All 22 IL2CPP API symbols used by this source exist in the supplied UnityFramework symbol table. This verifies availability, not runtime semantics or safety.
+Vanilla/Fade buttons call the confirmed two-argument SetSkin overload only while current WeaponId is 8. Material keys are based on the actual catalog's butterfly_vanilla and butterfly_fade folders. Material application and animation correctness still require device testing. These methods may perform normal game appearance synchronization; their native implementations have not been fully traced. No persistent inventory grant or ownership change is implemented.
 
-## Limits
+## Ordinary AIM (experimental)
 
-Bone discovery, enemy filtering, spectator behavior and on-device load still need runtime validation. Culling can leave animation bones stale; this module does not modify renderer or animator state. Missing usable rigs fall back to small dots. No visibility test, aim modifications or recoil modifications. Camera.main remains an assumption. Native crashes are not caught.
+While the real local shoot button is pressed, selects an identified enemy's confirmed head Transform within a configurable screen radius. Adjusts local PlayerLock pitch and body yaw with smoothing. Checks field types, float finiteness, pitch/camera convention and look limit before writing. Disabled while observing, dead, or with menu open. No line-of-sight test is implemented, so occluded targets can be selected. This is visible camera steering, not Silent Aim.
 
-Builds do not consume Apple App IDs. Do not commit game IPA archives or signing credentials to this public repository.
+## No Recoil (experimental)
+
+Zeroes the local weapon RecoilParameters' horizontal/vertical ranges, camera deviation and view kick through named IL2CPP fields whose types are checked as System.Single. Also clears selected transient local arms/view kick values. Configuration values are saved and restored when disabled, paused, backgrounded or observing, provided the value is still zero. It does not remove unrelated random spread or guarantee server acceptance.
+
+## Silent Aim status
+
+Not implemented. Confirmed method names such as ArmsController.FireRay are not proof of a safe executable interception point or of server-side acceptance. No placeholder toggle is exposed.
+
+## Verification and limits
+
+All additional API symbols and game member names used here were checked against the supplied binary/metadata. No fixed addresses or guessed field offsets. GitHub compilation verifies the arm64 build, not runtime correctness. Managed exceptions in experimental controls disable those controls while retaining ESP; native faults cannot be caught this way. Revert to v5 if testing regresses behavior.
+
+No IPA or signing credentials are stored in this repository. Builds do not consume Apple App IDs.
