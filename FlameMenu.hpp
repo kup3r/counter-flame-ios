@@ -43,7 +43,7 @@ static UIColor* FlameAccent(NSInteger index){switch(index){case 1:return [UIColo
     UILabel* _pageTitle;UILabel* _weaponLabel;UILabel* _statusLabel;FlameMiniPreview* _preview;
     UITableView* _weaponTable;UITableView* _skinTable;UITextField* _search;UISegmentedControl* _categories;
     NSArray* _allWeapons;NSArray* _weapons;NSArray* _skins;NSDictionary* _selectedWeapon;NSDictionary* _selectedSkin;
-    UIButton* _applySkin;UIButton* _applyModel;NSInteger _currentWeapon,_activeTab;
+    UIButton* _applySkin;UIButton* _applyModel;UIButton* _previewSkin;NSInteger _currentWeapon,_activeTab;
     UISegmentedControl* _colorSegments;UISegmentedControl* _fpsSegments;
     CGPoint _dragOrigin;
 }
@@ -72,7 +72,7 @@ static UIColor* FlameAccent(NSInteger index){switch(index){case 1:return [UIColo
     [slider addTarget:self action:@selector(changeSlider:) forControlEvents:UIControlEventValueChanged];[parent addSubview:slider];[self refreshValue:key];
 }
 - (void)refreshValue:(NSString*)key{
-    double n=[_config[key] doubleValue];_values[key].text=[key isEqualToString:@"maxDistance"]&&n<1?@"∞":[key isEqualToString:@"speedFactor"]?[NSString stringWithFormat:@"× %.2f",n]:[NSString stringWithFormat:@"%.1f",n];
+    double n=[_config[key] doubleValue];_values[key].text=([key isEqualToString:@"maxDistance"]||[key isEqualToString:@"aimDistance"])&&n==0?@"∞":[key isEqualToString:@"speedFactor"]?[NSString stringWithFormat:@"× %.2f",n]:[NSString stringWithFormat:@"%.1f",n];
 }
 - (instancetype)initWithFrame:(CGRect)frame config:(NSDictionary*)config{
     if((self=[super initWithFrame:frame])){
@@ -81,7 +81,7 @@ static UIColor* FlameAccent(NSInteger index){switch(index){case 1:return [UIColo
         self.backgroundColor=[UIColor colorWithRed:.96 green:.93 blue:.85 alpha:.97];self.layer.cornerRadius=7;self.layer.borderWidth=1;self.layer.borderColor=[UIColor colorWithWhite:.35 alpha:.45].CGColor;self.clipsToBounds=YES;
         CGFloat side=108;_sidebar=[[UIView alloc]initWithFrame:CGRectMake(0,0,side,frame.size.height)];_sidebar.autoresizingMask=UIViewAutoresizingFlexibleHeight;_sidebar.backgroundColor=[UIColor colorWithRed:.58 green:.6 blue:.57 alpha:1];[self addSubview:_sidebar];
         UILabel* brand=[self label:@"◉ FLAME" frame:CGRectMake(10,11,98,29) size:19 bold:YES parent:_sidebar];brand.textColor=[UIColor colorWithRed:1 green:.85 blue:.27 alpha:1];
-        [self label:@"iOS · v7" frame:CGRectMake(15,42,88,18) size:11 bold:YES parent:_sidebar];
+        [self label:@"iOS · v8" frame:CGRectMake(15,42,88,18) size:11 bold:YES parent:_sidebar];
         NSArray* names=@[@"◉ Visual",@"⌖ Aim",@"▦ Misc",@"◇ Skins",@"▣ Config"];
         for(NSInteger i=0;i<names.count;i++){UIButton* b=[self button:names[i] frame:CGRectMake(8,77+i*42,92,35) target:@selector(selectTab:) tag:100+i parent:_sidebar];[_tabs addObject:b];}
         _master=[self option:Master title:@"ON" x:10 y:frame.size.height-45 width:89 parent:_sidebar];_master.autoresizingMask=UIViewAutoresizingFlexibleTopMargin;
@@ -96,20 +96,35 @@ static UIColor* FlameAccent(NSInteger index){switch(index){case 1:return [UIColo
     }return self;
 }
 - (UIView*)makeVisual{
-    UIScrollView* p=[self scrollPage];CGFloat w=p.bounds.size.width,col=(w-20)/2;p.contentSize=CGSizeMake(w,430);
+    UIScrollView* p=[self scrollPage];CGFloat w=p.bounds.size.width,col=(w-20)/2;p.contentSize=CGSizeMake(w,490);
     [self section:@"ESP" x:0 y:0 width:col parent:p];NSArray* rows=@[@[@(Enemies),@"Только противники"],@[@(Boxes),@"Рамки"],@[@(CornerBox),@"Угловые рамки"],@[@(FilledBox),@"Заливка"],@[@(Skeleton),@"Скелет"],@[@(HeadCircle),@"Круг головы"],@[@(Health),@"Здоровье"],@[@(Names),@"Имена"],@[@(Distance),@"Дистанция"],@[@(Tracers),@"Линии к игрокам"]];
     for(NSInteger i=0;i<rows.count;i++)[self option:[rows[i][0] integerValue] title:rows[i][1] x:0 y:30+i*30 width:col parent:p];
-    [self slider:@"lineWidth" title:@"Толщина линий" min:.6 max:3 x:0 y:340 width:col parent:p];
+    [self option:Glow title:@"Подсветка рамок" x:0 y:335 width:col parent:p];
+    [self option:Vignette title:@"Затемнение краёв" x:0 y:366 width:col parent:p];
+    [self slider:@"lineWidth" title:@"Толщина линий" min:.6 max:3 x:0 y:410 width:col parent:p];
     [self section:@"ESP Preview" x:col+20 y:0 width:col parent:p];_preview=[[FlameMiniPreview alloc]initWithFrame:CGRectMake(col+20,30,col,151)];_preview.backgroundColor=[UIColor colorWithWhite:1 alpha:.3];_preview.layer.borderWidth=.5;_preview.layer.borderColor=[UIColor colorWithWhite:.7 alpha:1].CGColor;[p addSubview:_preview];
     [self option:Crosshair title:@"Прицел" x:col+20 y:190 width:col parent:p];[self option:FPSCounter title:@"Счётчик FPS" x:col+20 y:220 width:col parent:p];[self option:Debug title:@"Диагностика" x:col+20 y:250 width:col parent:p];
-    [self slider:@"maxDistance" title:@"Макс. дистанция (u)" min:0 max:250 x:col+20 y:285 width:col parent:p];
-    [self label:@"Цвет противников" frame:CGRectMake(col+20,345,col,20) size:12 bold:NO parent:p];UISegmentedControl* colors=[[UISegmentedControl alloc]initWithItems:@[@"Cyan",@"Gold",@"Green",@"Red"]];_colorSegments=colors;colors.frame=CGRectMake(col+20,372,col,28);colors.selectedSegmentIndex=[_config[@"accent"] integerValue];[colors addTarget:self action:@selector(changeColor:) forControlEvents:UIControlEventValueChanged];[p addSubview:colors];return p;
+    [self option:CenterDot title:@"Точка в центре" x:col+20 y:282 width:col parent:p];
+    [self slider:@"maxDistance" title:@"Макс. дистанция (u)" min:0 max:250 x:col+20 y:322 width:col parent:p];
+    [self label:@"Цвет противников" frame:CGRectMake(col+20,382,col,20) size:12 bold:NO parent:p];UISegmentedControl* colors=[[UISegmentedControl alloc]initWithItems:@[@"Cyan",@"Gold",@"Green",@"Red"]];_colorSegments=colors;colors.frame=CGRectMake(col+20,410,col,28);colors.selectedSegmentIndex=[_config[@"accent"] integerValue];[colors addTarget:self action:@selector(changeColor:) forControlEvents:UIControlEventValueChanged];[p addSubview:colors];return p;
 }
 - (UIView*)makeAim{
-    UIScrollView* p=[self scrollPage];CGFloat w=p.bounds.size.width,col=(w-22)/2;p.contentSize=CGSizeMake(w,300);
-    [self section:@"AIM / Weapon" x:0 y:0 width:col parent:p];[self option:Aim title:@"AIM при огне · тест" x:0 y:32 width:col parent:p];[self option:Recoil title:@"No Recoil · тест" x:0 y:65 width:col parent:p];[self option:NoSpread title:@"No Spread · клиент" x:0 y:98 width:col parent:p];
-    [self slider:@"aimRadius" title:@"Радиус наведения" min:30 max:180 x:col+22 y:0 width:col parent:p];[self slider:@"aimSmoothing" title:@"Скорость наведения" min:3 max:25 x:col+22 y:65 width:col parent:p];
-    UILabel* note=[self label:@"AIM поворачивает камеру при удержании огня. Проверки видимости нет. Silent Aim не подключён.\n\nNo Spread меняет найденные локальные параметры; результат сервера отдельно проверяется в матче." frame:CGRectMake(0,155,w,130) size:12 bold:NO parent:p];note.numberOfLines=0;return p;
+    UIScrollView* p=[self scrollPage];
+    CGFloat w=p.bounds.size.width,col=(w-22)/2,right=col+22;
+    p.contentSize=CGSizeMake(w,330);
+    [self section:@"AIM / Weapon" x:0 y:0 width:col parent:p];
+    [self option:Aim title:@"AIM при огне" x:0 y:32 width:col parent:p];
+    [self option:AimRing title:@"Показывать радиус" x:0 y:65 width:col parent:p];
+    [self option:Recoil title:@"No Recoil · тест" x:0 y:98 width:col parent:p];
+    [self option:NoSpread title:@"No Spread · клиент" x:0 y:131 width:col parent:p];
+    [self slider:@"aimRadius" title:@"Радиус наведения (pt)" min:5 max:180 x:right y:0 width:col parent:p];
+    [self slider:@"aimSmoothing" title:@"Скорость реакции" min:1 max:25 x:right y:52 width:col parent:p];
+    [self slider:@"aimDelay" title:@"Задержка от огня (мс)" min:0 max:500 x:right y:104 width:col parent:p];
+    [self slider:@"aimMaxTurn" title:@"Предел поворота (°/с)" min:15 max:360 x:right y:156 width:col parent:p];
+    [self slider:@"aimDeadzone" title:@"Мёртвая зона (pt)" min:0 max:30 x:right y:208 width:col parent:p];
+    [self slider:@"aimDistance" title:@"Макс. дистанция (u)" min:0 max:250 x:right y:260 width:col parent:p];
+    UILabel* note=[self label:@"Наведение при удержании огня. Проверка видимости отсутствует.\n\nПоказания No Spread отображаются внизу." frame:CGRectMake(0,170,col,120) size:11 bold:NO parent:p];
+    note.numberOfLines=0;return p;
 }
 - (UIView*)makeMisc{
     UIScrollView* p=[self scrollPage];CGFloat w=p.bounds.size.width,col=(w-22)/2;p.contentSize=CGSizeMake(w,300);
@@ -125,8 +140,8 @@ static UIColor* FlameAccent(NSInteger index){switch(index){case 1:return [UIColo
     _categories=[[UISegmentedControl alloc]initWithItems:@[@"Все",@"Ножи",@"Пист.",@"Винт.",@"Снайп.",@"Другое"]];_categories.frame=CGRectMake(0,35,w,27);_categories.selectedSegmentIndex=0;[_categories addTarget:self action:@selector(searchChanged) forControlEvents:UIControlEventValueChanged];[p addSubview:_categories];
     CGFloat tableH=fmax(70,h-109);_weaponTable=[[UITableView alloc]initWithFrame:CGRectMake(0,68,w*.44,tableH) style:UITableViewStylePlain];_skinTable=[[UITableView alloc]initWithFrame:CGRectMake(w*.46,68,w*.54,tableH) style:UITableViewStylePlain];
     for(UITableView* t in @[_weaponTable,_skinTable]){t.dataSource=self;t.delegate=self;t.rowHeight=31;t.backgroundColor=[UIColor colorWithWhite:1 alpha:.28];t.layer.borderWidth=.5;t.layer.borderColor=[UIColor colorWithWhite:.7 alpha:1].CGColor;[p addSubview:t];}
-    NSArray* titles=@[@"Применить скин",@"Модель ножа",@"Скин ↶",@"Нож ↶"];
-    for(NSInteger i=0;i<4;i++){CGFloat bw=(w-18)/4;UIButton* b=[self button:titles[i] frame:CGRectMake(i*(bw+6),h-34,bw,32) target:@selector(skinAction:) tag:300+i parent:p];if(i==0)_applySkin=b;if(i==1)_applyModel=b;}
+    NSArray* titles=@[@"Скин",@"Модель ножа",@"Скин ↶",@"Нож ↶",@"Превью"];
+    for(NSInteger i=0;i<5;i++){CGFloat bw=(w-24)/5;UIButton* b=[self button:titles[i] frame:CGRectMake(i*(bw+6),h-34,bw,32) target:@selector(skinAction:) tag:300+i parent:p];if(i==0)_applySkin=b;if(i==1)_applyModel=b;if(i==4)_previewSkin=b;}
     _selectedWeapon=_allWeapons.firstObject;[self filterSkins];return p;
 }
 - (UIView*)makeConfig{
@@ -176,12 +191,21 @@ static UIColor* FlameAccent(NSInteger index){switch(index){case 1:return [UIColo
     if(![_skins containsObject:_selectedSkin])_selectedSkin=nil;[_skinTable reloadData];[self refreshActions];
 }
 - (void)refreshActions{
-    _applySkin.enabled=_selectedSkin&&_currentWeapon==[_selectedWeapon[@"id"] integerValue];_applySkin.alpha=_applySkin.enabled?1:.4;
-    BOOL currentKnife=NO;for(NSDictionary* w in _allWeapons)if([w[@"id"] integerValue]==_currentWeapon){currentKnife=[w[@"category"] isEqual:@"knives"];break;}
-    _applyModel.enabled=currentKnife&&[_selectedWeapon[@"category"] isEqual:@"knives"];_applyModel.alpha=_applyModel.enabled?1:.4;
+    BOOL currentKnife=NO;
+    for(NSDictionary* w in _allWeapons)if([w[@"id"] integerValue]==_currentWeapon){
+        currentKnife=[w[@"category"] isEqual:@"knives"];break;
+    }
+    BOOL selectedKnife=[_selectedWeapon[@"category"] isEqual:@"knives"];
+    BOOL sameWeapon=_selectedWeapon&&_currentWeapon==[_selectedWeapon[@"id"] integerValue];
+    _applySkin.enabled=_selectedSkin&&(sameWeapon||(currentKnife&&selectedKnife));
+    _applySkin.alpha=_applySkin.enabled?1:.4;
+    _applyModel.enabled=currentKnife&&selectedKnife;
+    _applyModel.alpha=_applyModel.enabled?1:.4;
+    _previewSkin.enabled=_selectedSkin&&sameWeapon;
+    _previewSkin.alpha=_previewSkin.enabled?1:.4;
 }
 - (void)updateWeapon:(NSInteger)weapon name:(NSString*)name skin:(NSString*)skin{
-    if(_currentWeapon!=weapon){_currentWeapon=weapon;for(NSDictionary* w in _allWeapons)if([w[@"id"] integerValue]==weapon){_selectedWeapon=w;_selectedSkin=nil;[_weaponTable reloadData];[self filterSkins];break;}}
+    _currentWeapon=weapon;
     _weaponLabel.text=[NSString stringWithFormat:@"В руках: %@ · ID %ld\n%@",name.length?name:@"—",(long)weapon,skin.length?skin:@"стандартный материал"];[self refreshActions];
 }
 - (NSInteger)tableView:(UITableView*)table numberOfRowsInSection:(NSInteger)section{return table==_weaponTable?_weapons.count:MAX((NSUInteger)1,_skins.count);}
@@ -196,7 +220,7 @@ static UIColor* FlameAccent(NSInteger index){switch(index){case 1:return [UIColo
     if(table==_weaponTable){_selectedWeapon=_weapons[index.row];_selectedSkin=nil;[_weaponTable reloadData];[self filterSkins];}
     else if(_skins.count){_selectedSkin=_skins[index.row];[_skinTable reloadData];[self refreshActions];}
 }
-- (void)skinAction:(UIButton*)b{NSArray* actions=@[@"skin",@"model",@"restoreSkin",@"restoreModel"];[self endEditing:YES];[self.delegate flameSkinAction:actions[b.tag-300] weapon:_selectedWeapon skin:_selectedSkin];}
+- (void)skinAction:(UIButton*)b{NSArray* actions=@[@"skin",@"model",@"restoreSkin",@"restoreModel",@"previewSkin"];[self endEditing:YES];[self.delegate flameSkinAction:actions[b.tag-300] weapon:_selectedWeapon skin:_selectedSkin];}
 - (void)configAction:(UIButton*)b{NSArray* actions=@[@"save",@"load",@"reset",@"stop"];[self.delegate flameConfigAction:actions[b.tag-400]];}
 - (BOOL)textFieldShouldReturn:(UITextField*)textField{[textField resignFirstResponder];return YES;}
 @end

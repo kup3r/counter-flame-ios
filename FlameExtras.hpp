@@ -13,6 +13,7 @@ struct State : FlamePatch::Memory {
     void (*write)(P,P,P)=nullptr;
     P (*string_new)(const char*)=nullptr;
     P (*class_from_type)(P)=nullptr;
+    P (*method_return_type)(P)=nullptr;
     bool (*class_is_value)(P)=nullptr;
     P arms=nullptr,lock=nullptr,current=nullptr,recoil=nullptr,isKnife=nullptr;
     P euler=nullptr,setEuler=nullptr,goTransform=nullptr,lookLimit=nullptr;
@@ -20,15 +21,30 @@ struct State : FlamePatch::Memory {
     P fpsLocal=nullptr,parametersClass=nullptr,findAll=nullptr,weaponId=nullptr,loadParameters=nullptr,createWeapon=nullptr,setSkin=nullptr;
     P rotation=nullptr,playerBody=nullptr;
     FlamePatch::Store patches;
-    uint32_t originalKnife=0,knifeArms=0;
-    int expectedKnife=-1,lastActualKnife=-1;double verifyAfter=0;
+    uint32_t originalKnife=0,cosmeticArms=0,cosmeticWeapon=0;
+    int attemptedKnife=-1,expectedKnife=-1;
+    double verifyKnifeAfter=0,verifyKnifeDeadline=0,verifySkinAfter=0;
+    NSString* originalKnifeSkin=nil;
+    NSDictionary* desiredKnife=nil;
+    NSMutableDictionary<NSNumber*,NSString*>* desiredSkins=nil;
+    NSString* attemptedSkin=nil;
+    int skinWeapon=-1;
+    bool skinVerified=false;
+    bool knifeMaterialFallback=false,knifeMaterialTried=false;
+    uint32_t previewOwner=0;
+    NSString* previewKey=nil;
+    NSString* previewOriginal=nil;
+    double previewUntil=0;
     P movement=nullptr,speedGet=nullptr,ammoCurrent=nullptr,ammoConfig=nullptr,ammoMag=nullptr,ammoReserve=nullptr,ammoSet=nullptr;
     P nextSpread=nullptr,air=nullptr,fovGet=nullptr,fovSet=nullptr,unityAlive=nullptr,currentController=nullptr,equippedSkin=nullptr,displayName=nullptr;
     uint32_t fovOwner=0;float fovBefore=NAN,fovApplied=NAN;
-    float spreadObserved=NAN,speedObserved=NAN;int ammoObserved=-1,ammoMaximum=-1;
+    float spreadBefore=NAN,spreadObserved=NAN,speedObserved=NAN;int spreadFields=0;
+    uint32_t spreadParameters=0;
+    bool spreadVector=false;
+    double spreadSampleAfter=0;int ammoObserved=-1,ammoMaximum=-1;
     int observedWeapon=-1;NSString* observedName=@"Нет активного оружия";NSString* observedSkin=@"";
     NSString* expectedSkin=nil;
-    struct SkinSave {uint32_t arms,parameters;int weapon;NSString* skin;};
+    struct SkinSave {uint32_t parameters;int weapon;NSString* skin;};
     std::vector<SkinSave> skinHistory;
     NSString* status=@"Экспериментальные функции выключены";
     bool init(){
@@ -37,6 +53,7 @@ struct State : FlamePatch::Memory {
 #define EXTRA_LOAD(v,n) v=reinterpret_cast<decltype(v)>(dlsym(h,"il2cpp_" n))
         EXTRA_LOAD(field,"class_get_field_from_name");EXTRA_LOAD(field_type,"field_get_type");EXTRA_LOAD(field_flags,"field_get_flags");
         EXTRA_LOAD(read,"field_get_value");EXTRA_LOAD(write,"field_set_value");EXTRA_LOAD(string_new,"string_new");
+        EXTRA_LOAD(method_return_type,"method_get_return_type");
         EXTRA_LOAD(class_from_type,"class_from_type");EXTRA_LOAD(class_is_value,"class_is_valuetype");
 #undef EXTRA_LOAD
         dlclose(h);if(!field||!field_type||!field_flags||!read||!write||!string_new||!class_from_type||!class_is_value)return false;
@@ -65,13 +82,26 @@ struct State : FlamePatch::Memory {
             if(!strcmp(type,"<reference>")){P cls=class_from_type(param);same=actual&&cls&&!class_is_value(cls)&&!strchr(actual,'&')&&!strchr(actual,'*');}
             if(actual)Runtime::free_(actual);if(!same)return false;}return true;
     }
+    bool returns(P method,const char* expected){
+        if(!method||!method_return_type)return false;
+        P type=method_return_type(method);
+        char* name=type?Runtime::type_get_name(type):nullptr;
+        bool same=name&&!strcmp(name,expected);
+        if(name)Runtime::free_(name);
+        return same;
+    }
     void initExtended(){
         using namespace Runtime;P pc=cls("","PlayerController"),ac=cls("","ArmsController"),am=cls("","Ammunition");
         movement=method(pc,"get_MovementController",0);speedGet=method(cls("","PlayerMovement"),"get_Speed",0);
         ammoCurrent=method(ac,"get_CurrentAmmunition",0);ammoConfig=method(parametersClass,"get_Ammunition",0);
         ammoMag=method(am,"get_MagazineCapacity",0);ammoReserve=method(am,"get_Capacity",0);ammoSet=method(am,"Set",2,"System.Int32");
         if(!parametersMatch(ammoSet,{"System.Int32","System.Int32"}))ammoSet=nullptr;
-        nextSpread=method(ac,"get_NextShotSpread",0);air=method(parametersClass,"get_AirInaccuracy",0);
+        nextSpread=method(ac,"get_NextShotSpread",0);
+        uint32_t alignment=0;
+        P vector=cls("UnityEngine","Vector2");
+        spreadVector=returns(nextSpread,"UnityEngine.Vector2")&&vector&&class_value_size(vector,&alignment)==8;
+        if(!spreadVector&&!returns(nextSpread,"System.Single"))nextSpread=nullptr;
+        air=method(parametersClass,"get_AirInaccuracy",0);
         P camera=cls("UnityEngine","Camera");fovGet=method(camera,"get_fieldOfView",0);fovSet=method(camera,"set_fieldOfView",1,"System.Single");
         unityAlive=method(cls("UnityEngine","Object"),"op_Implicit",1,"UnityEngine.Object");
         currentController=method(ac,"get_CurrentController",0);equippedSkin=method(cls("ScarletWork.Weapon","WeaponController"),"get_EquippedSkin",0);
@@ -83,18 +113,46 @@ struct State : FlamePatch::Memory {
     }
     static int shortValue(P box){return box?*static_cast<int16_t*>(Runtime::object_unbox(box)):-1;}
     bool alive(P object,bool& ok){if(!object||!unityAlive)return false;P args[]={object};P value=Runtime::invoke(unityAlive,nullptr,args,ok);return value&&*static_cast<bool*>(Runtime::object_unbox(value));}
-    void noSpread(P ac,bool& ok){
-        using namespace Runtime;P knife=invoke(isKnife,ac,nullptr,ok);if(!knife||*static_cast<bool*>(object_unbox(knife)))return;
-        P p=invoke(current,ac,nullptr,ok);if(!p||!ok)return;
+    float sampleSpread(P ac){
+        bool ok=true;
+        P box=Runtime::invoke(nextSpread,ac,nullptr,ok);
+        if(!ok||!box)return NAN;
+        if(!spreadVector)return scalar(box);
+        float value[2];
+        memcpy(value,Runtime::object_unbox(box),sizeof(value));
+        return hypotf(value[0],value[1]);
+    }
+    void noSpread(P ac,double now,bool& ok){
+        using namespace Runtime;
+        P knife=invoke(isKnife,ac,nullptr,ok);
+        if(!knife||*static_cast<bool*>(object_unbox(knife))){restoreSpread();return;}
+        P p=invoke(current,ac,nullptr,ok);
+        if(!p||!ok){restoreSpread();return;}
         P acClass=cls("","ArmsController");
-        for(const char* f:{"_accuracyMult","_accuracyAdditive","_airPenalty"})savedFloat(ac,acClass,f,0,2);
-        P rf=typedField(acClass,"_recoilData","RecoilData");P data=objectField(ac,rf);
-        if(data){savedFloat(data,cls("","RecoilData"),"AngleDispertion",0,2);savedVector(data,cls("","RecoilData"),"RelativeDispersion",2);}
-        savedFloat(p,parametersClass,"_pelletSpread",0,2);
-        P ai=air?invoke(air,p,nullptr,ok):nullptr;
-        if(ai){P aiClass=cls("","AirInaccuracy");for(const char* f:{"_stand","_jump","_land","_ladder"})savedVector(ai,aiClass,f,2);savedFloat(ai,aiClass,"_jumpInitial",0,2);}
-        if(nextSpread)spreadObserved=scalar(invoke(nextSpread,ac,nullptr,ok));
-        if(!std::isfinite(spreadObserved)){restoreSpread();status=@"No Spread: значение не подтверждено";}else status=[NSString stringWithFormat:@"No Spread: движок сообщает %.4f",spreadObserved];
+        if(!spreadParameters||gchandle_get_target(spreadParameters)!=p){
+            restoreSpread();spreadParameters=gchandle_new(p,true);
+            if(nextSpread)spreadBefore=sampleSpread(ac);
+        }
+        int changed=0;
+        for(const char* f:{"_accuracyMult","_accuracyAdditive","_airPenalty"})changed+=savedFloat(ac,acClass,f,0,2);
+        P recoilClass=cls("","RecoilData");
+        P rf=recoilClass&&!class_is_value(recoilClass)?typedField(acClass,"_recoilData","RecoilData"):nullptr;
+        if(P data=objectField(ac,rf)){
+            changed+=savedFloat(data,recoilClass,"AngleDispertion",0,2);
+            changed+=savedVector(data,recoilClass,"RelativeDispersion",2);
+        }
+        changed+=savedFloat(p,parametersClass,"_pelletSpread",0,2);
+        P aiClass=cls("","AirInaccuracy");
+        if(air&&aiClass&&!class_is_value(aiClass)&&returns(air,"AirInaccuracy")){
+            if(P ai=invoke(air,p,nullptr,ok)){
+                for(const char* f:{"_stand","_jump","_land","_ladder"})changed+=savedVector(ai,aiClass,f,2);
+                changed+=savedFloat(ai,aiClass,"_jumpInitial",0,2);
+            }
+        }
+        spreadFields=changed;
+        if(nextSpread&&changed&&now>=spreadSampleAfter){
+            spreadObserved=sampleSpread(ac);spreadSampleAfter=now+.25;
+        }
     }
     void speed(P pc,float factor,bool& ok){
         using namespace Runtime;if(!movement||!speedGet)return;P controller=invoke(movement,pc,nullptr,ok);if(!controller)return;
@@ -105,7 +163,7 @@ struct State : FlamePatch::Memory {
         using namespace Runtime;if(!ammoCurrent||!ammoConfig||!ammoSet||!ammoMag||!ammoReserve)return;
         P p=invoke(current,ac,nullptr,ok);if(!p)return;
         P config=invoke(ammoConfig,p,nullptr,ok),live=invoke(ammoCurrent,ac,nullptr,ok);
-        if(!config||!live||config==live){status=@"Ammo: отдельный счётчик боезапаса не найден";return;}
+        if(!config||!live||config==live){ammoObserved=-1;return;}
         int magazine=shortValue(invoke(ammoMag,config,nullptr,ok)),reserve=shortValue(invoke(ammoReserve,config,nullptr,ok));
         int currentMag=shortValue(invoke(ammoMag,live,nullptr,ok)),currentReserve=shortValue(invoke(ammoReserve,live,nullptr,ok));
         if(!ok||magazine<=0||magazine>1000||reserve<0||currentMag<0||currentReserve<0)return;
@@ -133,52 +191,206 @@ struct State : FlamePatch::Memory {
         if(!result&&ok&&loadParameters&&name.length){P key=string_new(name.UTF8String);if(roots)roots->hold(key);P args[]={key};result=invoke(loadParameters,nullptr,args,ok);}
         return result&&ok&&id(invoke(weaponId,result,nullptr,ok))==requested?result:nullptr;
     }
-    void observe(P ac,bool& ok){
+    void clearPreview(){
+        if(previewOwner)Runtime::gchandle_free(previewOwner);
+        previewOwner=0;previewKey=previewOriginal=nil;previewUntil=0;
+    }
+    void resetCosmetics(){
         using namespace Runtime;
-        for(size_t i=0;i<skinHistory.size();){if(gchandle_get_target(skinHistory[i].arms)!=ac){gchandle_free(skinHistory[i].arms);gchandle_free(skinHistory[i].parameters);skinHistory.erase(skinHistory.begin()+i);}else i++;}
-        if(knifeArms&&gchandle_get_target(knifeArms)!=ac)discardKnife();
-        P p=invoke(current,ac,nullptr,ok);observedWeapon=p?id(invoke(weaponId,p,nullptr,ok)):-1;
-        if(p&&displayName)observedName=text(invoke(displayName,p,nullptr,ok));
-        P weapon=currentController?invoke(currentController,ac,nullptr,ok):nullptr;
-        observedSkin=weapon&&equippedSkin?text(invoke(equippedSkin,weapon,nullptr,ok)):@"";
+        clearPreview();
+        for(const SkinSave& save:skinHistory)gchandle_free(save.parameters);
+        skinHistory.clear();
+        if(originalKnife)gchandle_free(originalKnife);
+        if(cosmeticArms)gchandle_free(cosmeticArms);
+        if(cosmeticWeapon)gchandle_free(cosmeticWeapon);
+        originalKnife=cosmeticArms=cosmeticWeapon=0;
+        attemptedKnife=expectedKnife=-1;
+        knifeMaterialFallback=knifeMaterialTried=false;
+        attemptedSkin=expectedSkin=originalKnifeSkin=nil;
+        observedWeapon=skinWeapon=-1;
+        observedName=observedSkin=@"";
+        skinVerified=false;
     }
-    void rememberSkin(P ac,P parameters,int weapon){
-        using namespace Runtime;for(const SkinSave& save:skinHistory)if(save.weapon==weapon&&gchandle_get_target(save.arms)==ac)return;
-        skinHistory.push_back({gchandle_new(ac,true),gchandle_new(parameters,true),weapon,observedSkin});
+    void rememberSkin(P parameters){
+        for(const SkinSave& save:skinHistory)if(save.weapon==observedWeapon)return;
+        skinHistory.push_back({Runtime::gchandle_new(parameters,true),observedWeapon,observedSkin});
     }
-    void discardSkins(){for(const SkinSave& s:skinHistory){Runtime::gchandle_free(s.arms);Runtime::gchandle_free(s.parameters);}skinHistory.clear();expectedSkin=nil;}
-    void skinAction(P ac,NSString* action,NSDictionary* weapon,NSString* key,P arrayGet,bool& ok){
-        using namespace Runtime;observe(ac,ok);P p=invoke(current,ac,nullptr,ok);if(!p||!ok)return;
-        int selected=[weapon[@"id"] intValue];
-        if([action isEqualToString:@"model"]){
-            P nowKnife=invoke(isKnife,ac,nullptr,ok);
-            if(![weapon[@"category"] isEqualToString:@"knives"]||!nowKnife||!*static_cast<bool*>(object_unbox(nowKnife))){status=@"Замена модели доступна, когда нож в руках (CT/TR)";return;}
-            P desired=parametersFor(selected,weapon[@"name"],arrayGet,ok);if(!desired||!createWeapon){status=@"Конфигурация выбранной модели не найдена";return;}
-            if(!originalKnife||gchandle_get_target(knifeArms)!=ac){discardKnife();originalKnife=gchandle_new(p,true);knifeArms=gchandle_new(ac,true);}
-            equip(ac,desired,ok);if(ok){expectedKnife=selected;verifyAfter=NSProcessInfo.processInfo.systemUptime+1;status=@"Выбранная конфигурация ножа передана игре";}return;
-        }
-        if([action isEqualToString:@"restoreModel"]){knife(ac,2,arrayGet,ok);return;}
-        if([action isEqualToString:@"restoreSkin"]){
-            for(const SkinSave& save:skinHistory)if(save.weapon==observedWeapon&&gchandle_get_target(save.arms)==ac){
-                if(save.skin.length&&setSkin){P name=string_new(save.skin.UTF8String);if(roots)roots->hold(name);P args[]={name,nullptr};invoke(setSkin,ac,args,ok);expectedSkin=save.skin;verifyAfter=NSProcessInfo.processInfo.systemUptime+1;status=@"Исходный материал запрошен";}
-                else if(createWeapon){P original=Runtime::gchandle_get_target(save.parameters);equipPreservingAmmo(ac,original,ok);if(ok){expectedSkin=@"";verifyAfter=NSProcessInfo.processInfo.systemUptime+1;status=@"Исходное оружие пересоздано; проверяю стандартный материал";}}
-                else status=@"Штатное восстановление стандартного материала недоступно";return;
-            }status=@"Для текущего оружия ещё нет сохранённого материала";return;
-        }
-        if(![action isEqualToString:@"skin"]||!key.length)return;
-        if(selected!=observedWeapon){status=@"Возьми в руки оружие, выбранное в каталоге";return;}
+    void requestSkin(P ac,NSString* key,double now,bool& ok){
+        using namespace Runtime;
         if(!setSkin){status=@"Метод применения материала недоступен";return;}
-        rememberSkin(ac,p,observedWeapon);P name=string_new(key.UTF8String);if(roots)roots->hold(name);P args[]={name,nullptr};invoke(setSkin,ac,args,ok);
-        if(ok){expectedSkin=key;verifyAfter=NSProcessInfo.processInfo.systemUptime+1;status=@"Материал запрошен; ожидаю ответ движка";}
+        P name=string_new(key.UTF8String);
+        if(!name)return;
+        if(roots)roots->hold(name);
+        P args[]={name,nullptr};
+        invoke(setSkin,ac,args,ok);
+        if(ok){
+            expectedSkin=key;skinWeapon=observedWeapon;verifySkinAfter=now+1;
+            status=@"Материал запрошен; проверяю ключ в игре";
+        }
     }
-    void verifySkin(P ac,bool& ok){
-        if(!expectedSkin||NSProcessInfo.processInfo.systemUptime<verifyAfter)return;observe(ac,ok);
-        if(ok)status=[observedSkin isEqualToString:expectedSkin]?@"Движок подтвердил ключ выбранного материала":[NSString stringWithFormat:@"Запрошен %@; движок сообщает %@",expectedSkin,observedSkin.length?observedSkin:@"стандартный"];
+    void restoreSkin(P ac,double now,bool& ok){
+        for(auto it=skinHistory.begin();it!=skinHistory.end();++it){
+            if(it->weapon!=observedWeapon)continue;
+            if(it->skin.length)requestSkin(ac,it->skin,now,ok);
+            else if(createWeapon){
+                P original=Runtime::gchandle_get_target(it->parameters);
+                if(original)equipPreservingAmmo(ac,original,ok);
+                if(ok){expectedSkin=@"";skinWeapon=observedWeapon;verifySkinAfter=now+1;status=@"Оружие пересоздано; проверяю стандартный материал";}
+            }else {status=@"Штатное восстановление материала недоступно";return;}
+            if(ok){Runtime::gchandle_free(it->parameters);skinHistory.erase(it);}
+            return;
+        }
+        status=@"Автоприменение материала выключено для текущего оружия";
+    }
+    bool startPreview(P ac,P weapon,NSString* key,double now,bool& ok){
+        if(!setSkin||!equippedSkin||(!observedSkin.length&&(!createWeapon||!ammoCurrent||!ammoConfig||!ammoSet||!ammoMag||!ammoReserve))){
+            status=@"Штатное восстановление после предпросмотра недоступно";return false;
+        }
+        if([observedSkin isEqualToString:key]){
+            status=@"Этот материал уже отображается в игре";return true;
+        }
+        expectedSkin=nil;requestSkin(ac,key,now,ok);
+        if(!ok||!expectedSkin)return false;
         expectedSkin=nil;
+        previewOwner=Runtime::gchandle_new(weapon,true);
+        previewOriginal=observedSkin;previewKey=key;previewUntil=now+6;
+        status=@"Предпросмотр запрошен на 6 секунд";
+        return true;
+    }
+    void finishPreview(P ac,P parameters,double now,bool& ok){
+        if([observedSkin isEqualToString:previewKey]){
+            if(previewOriginal.length)requestSkin(ac,previewOriginal,now,ok);
+            else {equipPreservingAmmo(ac,parameters,ok);status=@"Предпросмотр завершён. Запрошен исходный материал.";}
+        }else status=@"Предпросмотр завершён. Ключ материала не был подтверждён.";
+        clearPreview();
+    }
+    bool cosmetics(P ac,NSDictionary* request,P arrayGet,double now,bool& previewStarted,bool& ok){
+        using namespace Runtime;
+        if(!cosmeticArms||gchandle_get_target(cosmeticArms)!=ac){
+            resetCosmetics();cosmeticArms=gchandle_new(ac,true);
+        }
+        P p=invoke(current,ac,nullptr,ok);
+        P weapon=currentController?invoke(currentController,ac,nullptr,ok):nullptr;
+        if(!p||!weapon||!ok)return false;
+        int held=id(invoke(weaponId,p,nullptr,ok));
+        if(!ok||held<0)return false;
+        bool newWeapon=held!=observedWeapon||!cosmeticWeapon||gchandle_get_target(cosmeticWeapon)!=weapon;
+        if(newWeapon){
+            if(cosmeticWeapon)gchandle_free(cosmeticWeapon);
+            cosmeticWeapon=gchandle_new(weapon,true);
+            attemptedSkin=nil;skinVerified=false;
+            if(held!=observedWeapon&&expectedKnife<0){attemptedKnife=-1;knifeMaterialTried=false;}
+        }
+        observedWeapon=held;
+        if(newWeapon&&displayName)observedName=text(invoke(displayName,p,nullptr,ok));
+        observedSkin=equippedSkin?text(invoke(equippedSkin,weapon,nullptr,ok)):@"";
+        if(!ok)return false;
+        if(!desiredSkins)desiredSkins=[NSMutableDictionary dictionary];
+
+        NSString* action=request[@"action"];
+        NSDictionary* selected=request[@"weapon"];
+        NSNumber* selectedID=selected[@"id"];
+        NSString* key=request[@"skin"][@"key"];
+        if(previewOwner&&gchandle_get_target(previewOwner)==weapon){
+            if(now>=previewUntil||request){finishPreview(ac,p,now,ok);return false;}
+            return true;
+        }
+        if([action isEqual:@"previewSkin"]){
+            if(previewOwner){status=@"Для завершения предпросмотра возьми прежнее оружие";return true;}
+            if(selectedID&&[selectedID intValue]==held&&key.length)previewStarted=startPreview(ac,weapon,key,now,ok);
+            return true;
+        }
+        if([action isEqual:@"restoreSkin"]){
+            [desiredSkins removeObjectForKey:@(held)];
+            expectedSkin=nil;attemptedSkin=nil;skinVerified=false;
+            restoreSkin(ac,now,ok);
+            return true;
+        }
+        if([action isEqual:@"restoreModel"]){
+            desiredKnife=nil;attemptedKnife=expectedKnife=-1;expectedSkin=nil;knifeMaterialFallback=false;
+            P knife=invoke(isKnife,ac,nullptr,ok);
+            if(originalKnife&&createWeapon&&knife&&*static_cast<bool*>(object_unbox(knife))){
+                P original=gchandle_get_target(originalKnife);
+                if(original){
+                    equip(ac,original,ok,originalKnifeSkin);
+                    if(ok){gchandle_free(originalKnife);originalKnife=0;originalKnifeSkin=nil;status=@"Исходный нож запрошен";}
+                }
+            }else status=@"Автозамена ножа выключена. Исходная модель вернётся при возрождении.";
+            return true;
+        }
+        if([action isEqual:@"skin"]||[action isEqual:@"model"]){
+            if(!selectedID)return true;
+            if([selected[@"category"] isEqual:@"knives"]){
+                desiredKnife=selected;attemptedKnife=expectedKnife=-1;knifeMaterialFallback=knifeMaterialTried=false;
+            }else if([selectedID intValue]!=held){
+                status=@"Возьми в руки выбранное оружие";return true;
+            }
+            if(key.length)desiredSkins[selectedID]=key;
+            expectedSkin=nil;attemptedSkin=nil;skinVerified=false;
+        }
+
+        if(expectedKnife>=0){
+            if(now<verifyKnifeAfter)return true;
+            if(held!=expectedKnife&&now<verifyKnifeDeadline)return true;
+            int expected=expectedKnife;expectedKnife=-1;
+            if(held!=expected){
+                knifeMaterialFallback=false;
+                status=[NSString stringWithFormat:@"Запрошен нож ID %d, игра показывает %d",expected,held];
+                return true;
+            }
+            status=[NSString stringWithFormat:@"Игра подтвердила ID ножа %d",held];
+        }
+        if(desiredKnife&&held!=[desiredKnife[@"id"] intValue]&&attemptedKnife!=held){
+            P knife=invoke(isKnife,ac,nullptr,ok);
+            if(knife&&*static_cast<bool*>(object_unbox(knife))){
+                attemptedKnife=held;
+                int desired=[desiredKnife[@"id"] intValue];
+                P parameters=createWeapon?parametersFor(desired,desiredKnife[@"name"],arrayGet,ok):nullptr;
+                if(!parameters){status=@"Конфигурация выбранного ножа недоступна";return true;}
+                if(!originalKnife){originalKnife=gchandle_new(p,true);originalKnifeSkin=observedSkin;}
+                NSString* material=desiredSkins[@(desired)];
+                equip(ac,parameters,ok,material);
+                if(ok){
+                    expectedKnife=desired;verifyKnifeAfter=now+1;verifyKnifeDeadline=now+3;knifeMaterialFallback=knifeMaterialTried=material.length>0;
+                    status=@"Модель и материал ножа переданы игре";
+                }
+                return true;
+            }
+        }
+        if(expectedSkin){
+            if(held!=skinWeapon){expectedSkin=nil;}
+            else {
+                if(now<verifySkinAfter)return true;
+                skinVerified=[observedSkin isEqualToString:expectedSkin];
+                status=skinVerified?@"Игра подтвердила ключ материала":[NSString stringWithFormat:@"Запрошен %@; игра сообщает %@",expectedSkin,observedSkin.length?observedSkin:@"стандартный"];
+                expectedSkin=nil;
+                return true;
+            }
+        }
+        NSString* material=desiredSkins[@(held)];
+        if(!material.length)return true;
+        if([observedSkin isEqualToString:material]){
+            attemptedSkin=material;skinVerified=true;knifeMaterialFallback=false;
+            return true;
+        }
+        if([attemptedSkin isEqualToString:material]&&!skinVerified&&!knifeMaterialFallback)return true;
+        attemptedSkin=material;skinVerified=false;
+        rememberSkin(p);
+        if(!knifeMaterialFallback&&!knifeMaterialTried&&createWeapon&&desiredKnife&&held==[desiredKnife[@"id"] intValue]){
+            knifeMaterialTried=true;
+            equip(ac,p,ok,material);
+            if(ok){expectedKnife=held;verifyKnifeAfter=now+1;verifyKnifeDeadline=now+3;knifeMaterialFallback=true;}
+        }else{
+            knifeMaterialFallback=false;
+            requestSkin(ac,material,now,ok);
+        }
+        return true;
     }
     NSString* summary(){
         NSMutableArray* parts=[NSMutableArray array];
-        if(std::isfinite(spreadObserved))[parts addObject:[NSString stringWithFormat:@"Spread %.4f",spreadObserved]];
+        if(spreadFields&&std::isfinite(spreadObserved)){
+            [parts addObject:[NSString stringWithFormat:@"Spread %.4f → %.4f (%d)",spreadBefore,spreadObserved,spreadFields]];
+        }else if(spreadFields)[parts addObject:[NSString stringWithFormat:@"Spread: %d полей, без показания движка",spreadFields]];
         if(std::isfinite(speedObserved))[parts addObject:[NSString stringWithFormat:@"Speed %.2f",speedObserved]];
         if(ammoObserved>=0)[parts addObject:[NSString stringWithFormat:@"Ammo %d/%d",ammoObserved,ammoMaximum]];
         return [parts componentsJoinedByString:@"  ·  "];
@@ -211,10 +423,16 @@ struct State : FlamePatch::Memory {
     }
     void zeroTransient(P owner,P cls,const char* name){if(!owner)return;P f=typedField(cls,name,"System.Single");if(f){float zero=0;write(owner,f,&zero);}}
     void restoreRecoil(){if(ready)patches.restore(1);}
-    void restoreSpread(){if(ready)patches.restore(2);spreadObserved=NAN;}
+    void clearSpreadSample(){
+        if(spreadParameters)Runtime::gchandle_free(spreadParameters);
+        spreadParameters=0;spreadBefore=spreadObserved=NAN;spreadFields=0;spreadSampleAfter=0;
+    }
+    void restoreSpread(){if(ready)patches.restore(2);clearSpreadSample();}
     void restoreSpeed(){if(ready)patches.restore(3);speedObserved=NAN;}
-    void restoreGameplay(){if(ready)patches.restore();restoreFov();spreadObserved=NAN;speedObserved=NAN;ammoObserved=-1;ammoMaximum=-1;}
-    void discardKnife(){if(originalKnife)Runtime::gchandle_free(originalKnife);if(knifeArms)Runtime::gchandle_free(knifeArms);originalKnife=0;knifeArms=0;expectedKnife=-1;lastActualKnife=-1;}
+    void restorePlayer(){
+        if(ready)patches.restore();
+        clearSpreadSample();speedObserved=NAN;ammoObserved=-1;ammoMaximum=-1;
+    }
     void noRecoil(P ac,bool& ok){
         using namespace Runtime;P knife=invoke(isKnife,ac,nullptr,ok);if(!knife||*static_cast<bool*>(object_unbox(knife)))return;
         P p=invoke(current,ac,nullptr,ok);P rp=p?invoke(recoil,p,nullptr,ok):nullptr;if(!ok||!rp)return;
@@ -226,7 +444,6 @@ struct State : FlamePatch::Memory {
             for(const char* f:{"profileViewKick","punchShotPitch","kickBackPerShot"})zeroSaved(fp,fc,f);
             for(const char* f:{"_punch","_punchShot","_kickTargetZ"})zeroTransient(fp,fc,f);
         }}
-        status=@"No Recoil: параметры применены (тест)";
     }
     bool fireHeld(P controls,bool& ok){
         if(!controls||!shootButton||!pressed)return false;
@@ -234,7 +451,7 @@ struct State : FlamePatch::Memory {
         return value&&*static_cast<bool*>(Runtime::object_unbox(value));
     }
     static float angle(float value){value=fmodf(value+180,360);if(value<0)value+=360;return value-180;}
-    void aim(P pc,P cameraTransform,V3 cameraPos,V3 target,float alpha,bool& ok){
+    void aim(P pc,P cameraTransform,V3 cameraPos,V3 target,float alpha,float maxStep,bool& ok){
         using namespace Runtime;
         if(!lock||!rotation||!playerBody||!euler||!setEuler||!goTransform){status=@"AIM: нужные методы недоступны";return;}
         P controller=invoke(lock,pc,nullptr,ok);if(!controller)return;
@@ -251,25 +468,20 @@ struct State : FlamePatch::Memory {
         if(fminf(fabsf(pitch-camPitch),fabsf(pitch+camPitch))>12){status=@"AIM: система углов не подтверждена";return;}
         float limit=lookLimit?scalar(invoke(lookLimit,controller,nullptr,ok)):89;
         if(!std::isfinite(limit)||limit<1||limit>90)limit=89;
-        float next=std::clamp(pitch+sign*angle(wantPitch-camPitch)*alpha,-limit,limit);
-        bodyAngles.y+=angle(wantYaw-cam.y)*alpha;
+        float pitchStep=angle(wantPitch-camPitch)*alpha,yawStep=angle(wantYaw-cam.y)*alpha;
+        float magnitude=hypotf(pitchStep,yawStep);
+        if(magnitude>maxStep){pitchStep*=maxStep/magnitude;yawStep*=maxStep/magnitude;}
+        float next=std::clamp(pitch+sign*pitchStep,-limit,limit);
+        bodyAngles.y+=yawStep;
         if(!ok)return;write(controller,rotation,&next);P args[]={&bodyAngles};invoke(setEuler,bodyTr,args,ok);
-        status=@"AIM: наведение при удержании огня (тест)";
     }
-    P butterfly(P arrayGet,bool& ok){
-        using namespace Runtime;P result=nullptr;
-        if(findAll){P type=type_get_object(class_get_type(parametersClass));P args[]={type};P list=invoke(findAll,nullptr,args,ok);
-            if(list&&array_length(list)<=4096)for(int i=0;i<(int)array_length(list)&&ok;i++){
-                P idx[]={&i};P p=invoke(arrayGet,list,idx,ok);if(p&&id(invoke(weaponId,p,nullptr,ok))==8){result=p;break;}
-            }
-        }
-        if(!result&&ok&&loadParameters){P name=string_new("Butterfly");if(roots)roots->hold(name);P args[]={name};result=invoke(loadParameters,nullptr,args,ok);}
-        if(!result||!ok||id(invoke(weaponId,result,nullptr,ok))!=8)return nullptr;return result;
-    }
-    void equip(P ac,P parameters,bool& ok){
+    void equip(P ac,P parameters,bool& ok,NSString* skin=nil){
+        using namespace Runtime;
+        P material=skin.length?string_new(skin.UTF8String):nullptr;
+        if(material&&roots)roots->hold(material);
         bool pickup=false;int seed=0,owner=0;
-        P args[]={parameters,nullptr,nullptr,&pickup,nullptr,&seed,&owner};
-        Runtime::invoke(createWeapon,ac,args,ok);
+        P args[]={parameters,material,nullptr,&pickup,nullptr,&seed,&owner};
+        invoke(createWeapon,ac,args,ok);
     }
     void equipPreservingAmmo(P ac,P parameters,bool& ok){
         using namespace Runtime;int magazine=-1,reserve=-1;
@@ -279,33 +491,6 @@ struct State : FlamePatch::Memory {
         equip(ac,parameters,ok);
         if(ok&&magazine>=0&&reserve>=0&&ammoCurrent&&ammoSet){P after=invoke(ammoCurrent,ac,nullptr,ok),base=ammoConfig?invoke(ammoConfig,parameters,nullptr,ok):nullptr;
             if(after&&base&&after!=base){P args[]={&magazine,&reserve};invoke(ammoSet,after,args,ok);}}
-    }
-    void knife(P ac,int action,P arrayGet,bool& ok){
-        using namespace Runtime;
-        if(!createWeapon){status=@"Нож: сигнатура CreateWeapon не подтверждена";return;}
-        P knifeNow=invoke(isKnife,ac,nullptr,ok);
-        if(!knifeNow||!*static_cast<bool*>(object_unbox(knifeNow))){status=@"Сначала возьми нож в руки";return;}
-        P currentParams=invoke(current,ac,nullptr,ok);if(!currentParams)return;
-        if(action==2){
-            if(!originalKnife||gchandle_get_target(knifeArms)!=ac){status=@"Нет сохранённого ножа для этого персонажа";return;}
-            P original=gchandle_get_target(originalKnife);int originalId=id(invoke(weaponId,original,nullptr,ok));equip(ac,original,ok);if(ok){discardKnife();expectedKnife=originalId;verifyAfter=NSProcessInfo.processInfo.systemUptime+1;status=@"Исходная конфигурация ножа передана игре";}return;
-        }
-        if(action==3||action==4){
-            if(!setSkin||id(invoke(weaponId,currentParams,nullptr,ok))!=8){status=@"Сначала примени Butterfly и возьми её в руки";return;}
-            const char* key=action==3?"butterfly_vanilla":"butterfly_fade";
-            P name=string_new(key);if(roots)roots->hold(name);P args[]={name,nullptr};invoke(setSkin,ac,args,ok);
-            if(ok)status=action==3?@"Запрошен материал Butterfly Vanilla (тест)":@"Запрошен материал Butterfly Fade (тест)";return;
-        }
-        P desired=butterfly(arrayGet,ok);if(!desired){status=@"Конфигурация Butterfly не загружена; замена отменена";return;}
-        if(!originalKnife||gchandle_get_target(knifeArms)!=ac){discardKnife();originalKnife=gchandle_new(currentParams,true);knifeArms=gchandle_new(ac,true);}
-        equip(ac,desired,ok);if(ok){expectedKnife=8;verifyAfter=NSProcessInfo.processInfo.systemUptime+1;status=@"Конфигурация Butterfly (ID 8) передана игре";}
-    }
-    void verifyKnife(P ac,bool& ok){
-        if(expectedKnife<0||NSProcessInfo.processInfo.systemUptime<verifyAfter)return;
-        P p=Runtime::invoke(current,ac,nullptr,ok);int actual=p?id(Runtime::invoke(weaponId,p,nullptr,ok)):-1;
-        lastActualKnife=actual;
-        if(ok)status=actual==expectedKnife?[NSString stringWithFormat:@"Текущий ID %d. Проверь модель и анимации ножа",actual]:[NSString stringWithFormat:@"Ожидался ID %d, сейчас %d. Переключись на нож",expectedKnife,actual];
-        expectedKnife=-1;
     }
 };
 }
