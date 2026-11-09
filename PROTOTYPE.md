@@ -1,11 +1,13 @@
-# Flame ESP v3
+# Flame ESP v4
 
-Menu: double tap with three fingers. ESP starts OFF: enable only after entering a match and disable before the next loading screen. After enabling, sampling waits five seconds. An observed active scene change pauses ESP until manually re-enabled; unchanged-scene loading phases cannot be reliably detected.
+Menu: double tap with three fingers. Enable ESP only after match loading; disable before the next loading screen. Target update rate: selectable 30/60 Hz. Player discovery: every 0.5 seconds; positions and bounds: each display callback.
 
-V3 requests 60 display-link callbacks per second (30/60 selector). Discovery of PlayerController objects and child SkinnedMeshRenderer objects runs every 0.5 seconds; cached objects are held by GC handles, and their model bounds and projections are refreshed on each display callback. Positions are not interpolated from old snapshots. Actual callback rate and CPU cost require on-device measurement.
+V3's body discovery was broken for this binary. Parsing the supplied metadata v31 shows that UnityEngine.Component has only generic GetComponentsInChildren overloads; the non-generic (System.Type) overload used by v3 is absent. V3 treated this as an optional feature and silently fell back to dots.
 
-Boxes enclose the projected world-space bounds of enabled child skinned meshes. Renderer bounds can be conservative, include equipment, or not follow every animation precisely. An object without available bounds falls back to a moving dot. Boxes crossing the camera near plane are omitted. No team, health, bone, occlusion or dead-player filtering is implemented. Camera.main is still assumed to be the gameplay camera.
+V4 uses the exact getters present in the supplied metadata: PlayerController.get_PlayerAnimatorController → ScarletWork.Photon.TPS.PlayerAnimatorController.get_CurrentSkeleton → ScarletWork.Game.PlayerSkeleton.get_Body. get_BodyLod is used only if Body is unavailable. Renderer.get_bounds and Bounds.get_min/get_max provide the box, without fixed offsets or invented character dimensions.
 
-IL2CPP API methods are resolved at runtime and cached. Missing required methods pause ESP; managed exceptions pause sampling. This does not catch native crashes. All methods and bounds must still be verified on the phone. No game addresses or field offsets are hard-coded. No Silent Aim or No Recoil.
+Disabled renderers are counted but no longer excluded from bounds reads. No renderer state is changed. This matters because the game includes model visibility/occlusion logic. Whether disabled renderer bounds stay current on the phone still needs verification.
 
-GitHub Actions compiles an arm64 dylib. Integrating into an IPA and signing are separate; builds consume no Apple App IDs. Never commit the game IPA or signing credentials to this public repository.
+On-screen diagnostics show body count, missing animator/skeleton/body counts, disabled renderers, empty bounds and boxes rejected near the camera. Dots remain an explicit fallback for unavailable bounds. A successful compilation does not prove the new getters work on the device. Native crashes are not caught.
+
+No team, health, bone, visibility or dead-player filtering; no Silent Aim or No Recoil. Camera.main is still assumed to be the gameplay camera. Game archives and signing credentials must not be committed to this public repository. Builds do not consume Apple App IDs.

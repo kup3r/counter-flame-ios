@@ -82,7 +82,7 @@ P invoke(P m,P self,P* args,bool& ok) {
     if(!ok) return nullptr;
     if(!m){ok=false;return nullptr;}
     P exception=nullptr; P result=runtime_invoke(m,self,args,&exception);
-    if(exception) { ok=false; NSLog(@"[Flame v3] Managed exception in %s",method_get_name(m)); }
+    if(exception) { ok=false; NSLog(@"[Flame v4] Managed exception in %s",method_get_name(m)); }
     if(result && !exception && roots) roots->hold(result);
     return exception?nullptr:result;
 }
@@ -92,13 +92,14 @@ struct V3 { float x,y,z; };
 static bool finiteV3(V3 v) { return std::isfinite(v.x)&&std::isfinite(v.y)&&std::isfinite(v.z); }
 struct Target { uint32_t player; std::vector<uint32_t> meshes; };
 struct Api {
-    Runtime::P player=nullptr, mesh=nullptr;
+    Runtime::P player=nullptr;
     Runtime::P active=nullptr,loaded=nullptr,handle=nullptr,find=nullptr,main=nullptr;
     Runtime::P tr=nullptr,pos=nullptr,project=nullptr,get=nullptr,alive=nullptr,width=nullptr,height=nullptr;
-    Runtime::P children=nullptr,bounds=nullptr,bmin=nullptr,bmax=nullptr,enabled=nullptr;
+    Runtime::P animator=nullptr,skeleton=nullptr,body=nullptr,bodyLod=nullptr;
+    Runtime::P bounds=nullptr,bmin=nullptr,bmax=nullptr,enabled=nullptr;
     bool init() {
         using namespace Runtime;
-        player=cls("","PlayerController"); mesh=cls("UnityEngine","SkinnedMeshRenderer");
+        player=cls("","PlayerController");
         P camera=cls("UnityEngine","Camera"),component=cls("UnityEngine","Component");
         P object=cls("UnityEngine","Object"),scene=cls("UnityEngine.SceneManagement","Scene");
         active=method(cls("UnityEngine.SceneManagement","SceneManager"),"GetActiveScene",0);
@@ -109,12 +110,15 @@ struct Api {
         get=method(cls("System","Array"),"GetValue",1,"System.Int32");
         alive=method(object,"op_Implicit",1,"UnityEngine.Object");
         width=method(cls("UnityEngine","Screen"),"get_width",0);height=method(cls("UnityEngine","Screen"),"get_height",0);
-        children=method(component,"GetComponentsInChildren",1,"System.Type");
+        animator=method(player,"get_PlayerAnimatorController",0);
+        skeleton=method(cls("ScarletWork.Photon.TPS","PlayerAnimatorController"),"get_CurrentSkeleton",0);
+        body=method(cls("ScarletWork.Game","PlayerSkeleton"),"get_Body",0);
+        bodyLod=method(cls("ScarletWork.Game","PlayerSkeleton"),"get_BodyLod",0);
         bounds=method(cls("UnityEngine","Renderer"),"get_bounds",0);
         enabled=method(cls("UnityEngine","Renderer"),"get_enabled",0);
         bmin=method(cls("UnityEngine","Bounds"),"get_min",0);bmax=method(cls("UnityEngine","Bounds"),"get_max",0);
         uint32_t align=0;P v=cls("UnityEngine","Vector3");
-        return player&&v&&class_value_size(v,&align)==sizeof(V3)&&active&&loaded&&handle&&find&&main&&tr&&pos&&project&&get&&alive&&width&&height;
+        return player&&v&&class_value_size(v,&align)==sizeof(V3)&&active&&loaded&&handle&&find&&main&&tr&&pos&&project&&get&&alive&&width&&height&&animator&&skeleton&&body&&bounds&&bmin&&bmax;
     }
 };
 @interface FlameMarkers : UIView <UIGestureRecognizerDelegate>
@@ -132,16 +136,17 @@ struct Api {
     UISwitch* _markerToggle;
     int _sceneHandle;
     NSTimeInterval _settledAfter,_nextDiscovery;
+    size_t _bodyCount,_noAnimator,_noSkeleton,_noBody;
 }
 - (instancetype)initWithFrame:(CGRect)frame {
     if((self=[super initWithFrame:frame])) {
         self.backgroundColor=UIColor.clearColor; self.userInteractionEnabled=YES;
         self.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight;
-        _status=@"Flame v3: ESP off"; _sceneHandle=-1;
+        _status=@"Flame v4: ESP off"; _sceneHandle=-1;
         _panel=[[UIView alloc] initWithFrame:CGRectMake(55,55,245,160)];
         _panel.backgroundColor=[UIColor colorWithWhite:0.08 alpha:0.95]; _panel.layer.cornerRadius=12;_panel.hidden=YES;
         UILabel* title=[[UILabel alloc] initWithFrame:CGRectMake(15,10,215,25)];
-        title.text=@"Flame · ESP v3";title.textColor=UIColor.whiteColor;[_panel addSubview:title];
+        title.text=@"Flame · ESP v4";title.textColor=UIColor.whiteColor;[_panel addSubview:title];
         UILabel* label=[[UILabel alloc] initWithFrame:CGRectMake(15,53,145,30)];
         label.text=@"ESP boxes";label.textColor=UIColor.whiteColor;[_panel addSubview:label];
         _markerToggle=[[UISwitch alloc] initWithFrame:CGRectMake(175,53,50,30)];
@@ -181,7 +186,7 @@ struct Api {
 - (void)changeMarkers:(UISwitch*)toggle {
     [self clearTargets];_points.clear();_boxes.clear();_enabled=toggle.on;_sceneHandle=-1;
     _settledAfter=NSProcessInfo.processInfo.systemUptime+5;_displayLink.paused=!_enabled;
-    _status=_enabled?@"Flame v3: waiting for scene":@"Flame v3: ESP off";[self setNeedsDisplay];
+    _status=_enabled?@"Flame v4: waiting for scene":@"Flame v4: ESP off";[self setNeedsDisplay];
 }
 - (void)pauseWithStatus:(NSString*)status {
     _enabled=NO;_markerToggle.on=NO;_displayLink.paused=YES;
@@ -195,6 +200,7 @@ struct Api {
 - (void)discover:(bool&)ok {
     using namespace Runtime;
     [self clearTargets];
+    _bodyCount=0;_noAnimator=0;_noSkeleton=0;_noBody=0;
     P type=type_get_object(class_get_type(_api.player));P args[]={type};P array=invoke(_api.find,nullptr,args,ok);
     if(!ok||!array)return;
     uintptr_t count=array_length(array);if(count>128){ok=false;return;}
@@ -202,18 +208,17 @@ struct Api {
         P index[]={&i};P player=invoke(_api.get,array,index,ok);
         if(![self isAlive:player ok:ok])continue;
         Target target{gchandle_new(player,true),{}};
-        if(_api.mesh&&_api.children&&_api.bounds&&_api.bmin&&_api.bmax&&_api.enabled) {
-            P meshType=type_get_object(class_get_type(_api.mesh));P childArgs[]={meshType};
-            P meshes=invoke(_api.children,player,childArgs,ok);
-            if(meshes&&ok) {
-                uintptr_t total=array_length(meshes);
-                // Refuse oversized hierarchies rather than doing unbounded per-frame work.
-                if(total<=16)for(int j=0;j<(int)total&&ok;j++) {
-                    P idx[]={&j};P mesh=invoke(_api.get,meshes,idx,ok);
-                    if([self isAlive:mesh ok:ok])target.meshes.push_back(gchandle_new(mesh,true));
-                }
-            }
-        }
+        // These exact property getters exist in this IPA's type/method metadata.
+        P animator=invoke(_api.animator,player,nullptr,ok);
+        if([self isAlive:animator ok:ok]) {
+            P skeleton=invoke(_api.skeleton,animator,nullptr,ok);
+            if([self isAlive:skeleton ok:ok]) {
+                P mesh=invoke(_api.body,skeleton,nullptr,ok);
+                if(![self isAlive:mesh ok:ok]&&ok&&_api.bodyLod)mesh=invoke(_api.bodyLod,skeleton,nullptr,ok);
+                if([self isAlive:mesh ok:ok]) {target.meshes.push_back(gchandle_new(mesh,true));_bodyCount++;}
+                else _noBody++;
+            }else _noSkeleton++;
+        }else _noAnimator++;
         _targets.push_back(std::move(target));
     }
 }
@@ -222,37 +227,38 @@ struct Api {
     _points.clear();_boxes.clear();
     if(!_enabled)return;
     if(UIApplication.sharedApplication.applicationState!=UIApplicationStateActive||!self.window) {
-        [self pauseWithStatus:@"Flame v3: paused in background"];return;
+        [self pauseWithStatus:@"Flame v4: paused in background"];return;
     }
     if(!_ready)_ready=load();
-    if(!_ready){_status=@"Flame v3: waiting for runtime";[self setNeedsDisplay];return;}
-    if(!NSThread.isMainThread||!thread_current()) {[self pauseWithStatus:@"Flame v3: runtime thread unavailable"];return;}
+    if(!_ready){_status=@"Flame v4: waiting for runtime";[self setNeedsDisplay];return;}
+    if(!NSThread.isMainThread||!thread_current()) {[self pauseWithStatus:@"Flame v4: runtime thread unavailable"];return;}
     if(!_apiReady)_apiReady=_api.init();
-    if(!_apiReady){[self pauseWithStatus:@"Flame v3: required methods unavailable"];return;}
+    if(!_apiReady){[self pauseWithStatus:@"Flame v4: required methods unavailable"];return;}
     RootScope frameRoots;bool ok=true;
     P scene=invoke(_api.active,nullptr,nullptr,ok);
     P sceneValue=scene?object_unbox(scene):nullptr;
-    if(!sceneValue){[self pauseWithStatus:@"Flame v3: no scene"];return;}
+    if(!sceneValue){[self pauseWithStatus:@"Flame v4: no scene"];return;}
     P loaded=invoke(_api.loaded,sceneValue,nullptr,ok),handle=invoke(_api.handle,sceneValue,nullptr,ok);
-    if(!ok||!loaded||!handle){[self pauseWithStatus:@"Flame v3: scene check failed"];return;}
+    if(!ok||!loaded||!handle){[self pauseWithStatus:@"Flame v4: scene check failed"];return;}
     bool isLoaded=*static_cast<bool*>(object_unbox(loaded));int current=*static_cast<int*>(object_unbox(handle));
     NSTimeInterval now=NSProcessInfo.processInfo.systemUptime;
     if(!isLoaded||(_sceneHandle!=-1&&current!=_sceneHandle)) {
-        [self pauseWithStatus:@"Flame v3: scene changed; enable after loading"];return;
+        [self pauseWithStatus:@"Flame v4: scene changed; enable after loading"];return;
     }
     if(_sceneHandle==-1){_sceneHandle=current;_settledAfter=now+5;}
-    if(now<_settledAfter){_status=@"Flame v3: waiting for scene";[self setNeedsDisplay];return;}
+    if(now<_settledAfter){_status=@"Flame v4: waiting for scene";[self setNeedsDisplay];return;}
     if(now>=_nextDiscovery) {
         [self discover:ok];_nextDiscovery=now+0.5;
-        if(!ok){[self pauseWithStatus:@"Flame v3: discovery exception"];return;}
+        if(!ok){[self pauseWithStatus:@"Flame v4: discovery exception"];return;}
     }
     P camera=invoke(_api.main,nullptr,nullptr,ok);
-    if(![self isAlive:camera ok:ok]){_status=@"Flame v3: no camera";[self setNeedsDisplay];return;}
+    if(![self isAlive:camera ok:ok]){_status=@"Flame v4: no camera";[self setNeedsDisplay];return;}
     P wb=invoke(_api.width,nullptr,nullptr,ok),hb=invoke(_api.height,nullptr,nullptr,ok);
-    if(!ok||!wb||!hb){[self pauseWithStatus:@"Flame v3: viewport error"];return;}
+    if(!ok||!wb||!hb){[self pauseWithStatus:@"Flame v4: viewport error"];return;}
     int w=*static_cast<int*>(object_unbox(wb)),h=*static_cast<int*>(object_unbox(hb));
     if(w<=0||h<=0)return;
     CGFloat sx=self.bounds.size.width/w,sy=self.bounds.size.height/h;
+    size_t disabled=0,emptyBounds=0,clipped=0;
     for(const Target& target:_targets) {
         // Each target's temporary boxes and vectors are released after that target.
         RootScope targetRoots;
@@ -261,14 +267,16 @@ struct Api {
         V3 lo{INFINITY,INFINITY,INFINITY},hi{-INFINITY,-INFINITY,-INFINITY};bool haveBounds=false;
         for(uint32_t handle:target.meshes) {
             P mesh=gchandle_get_target(handle);if(![self isAlive:mesh ok:ok])continue;
-            P enabled=invoke(_api.enabled,mesh,nullptr,ok);
-            if(!enabled||!*static_cast<bool*>(object_unbox(enabled)))continue;
+            if(_api.enabled) {
+                P enabled=invoke(_api.enabled,mesh,nullptr,ok);
+                if(enabled&&!*static_cast<bool*>(object_unbox(enabled)))disabled++;
+            }
             P b=invoke(_api.bounds,mesh,nullptr,ok);if(!b)continue;
             P raw=object_unbox(b);if(!raw){ok=false;break;}
             P mn=invoke(_api.bmin,raw,nullptr,ok),mx=invoke(_api.bmax,raw,nullptr,ok);
             if(!mn||!mx)continue;
             V3 a,c;memcpy(&a,object_unbox(mn),sizeof(a));memcpy(&c,object_unbox(mx),sizeof(c));
-            if(!finiteV3(a)||!finiteV3(c)||a.x>c.x||a.y>c.y||a.z>c.z)continue;
+            if(!finiteV3(a)||!finiteV3(c)||a.x>=c.x||a.y>=c.y||a.z>=c.z){emptyBounds++;continue;}
             lo={fminf(lo.x,a.x),fminf(lo.y,a.y),fminf(lo.z,a.z)};
             hi={fmaxf(hi.x,c.x),fmaxf(hi.y,c.y),fmaxf(hi.z,c.z)};haveBounds=true;
         }
@@ -287,7 +295,7 @@ struct Api {
             if(visible&&right>left&&bottom>top) {
                 CGRect rect=CGRectMake(left,top,right-left,bottom-top);
                 if(CGRectIntersectsRect(rect,self.bounds))_boxes.push_back(rect);
-            }
+            }else clipped++;
         }else {
             // Missing model bounds are shown as a dot, never an invented-size box.
             P transform=invoke(_api.tr,player,nullptr,ok);if(!transform)continue;
@@ -299,8 +307,8 @@ struct Api {
         }
         if(!ok)break;
     }
-    if(!ok){[self pauseWithStatus:@"Flame v3: managed exception; paused"];return;}
-    _status=[NSString stringWithFormat:@"Flame v3: %zu boxes / %zu dots · target %ld FPS",_boxes.size(),_points.size(),(long)_displayLink.preferredFramesPerSecond];
+    if(!ok){[self pauseWithStatus:@"Flame v4: managed exception; paused"];return;}
+    _status=[NSString stringWithFormat:@"v4: %zu boxes / %zu dots · bodies %zu/%zu\nmissing animator/skeleton/body: %zu/%zu/%zu\nhidden %zu · empty bounds %zu · clipped %zu",_boxes.size(),_points.size(),_bodyCount,_targets.size(),_noAnimator,_noSkeleton,_noBody,disabled,emptyBounds,clipped];
     [self setNeedsDisplay];
 }
 - (void)drawRect:(CGRect)rect {
@@ -313,7 +321,7 @@ struct Api {
     [UIColor.cyanColor setStroke];
     for(CGPoint point:_points){UIBezierPath* p=[UIBezierPath bezierPathWithOvalInRect:CGRectMake(point.x-3,point.y-3,6,6)];p.lineWidth=1.5;[p stroke];}
     CGContextRestoreGState(context);
-    [_status drawAtPoint:CGPointMake(55,25) withAttributes:@{NSForegroundColorAttributeName:UIColor.cyanColor,NSFontAttributeName:[UIFont systemFontOfSize:12]}];
+    [_status drawInRect:CGRectMake(55,20,440,55) withAttributes:@{NSForegroundColorAttributeName:UIColor.cyanColor,NSFontAttributeName:[UIFont systemFontOfSize:11]}];
 }
 @end
 
