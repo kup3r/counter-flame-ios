@@ -206,7 +206,7 @@ struct Api {
     [self flameSetOption:Master value:NO];
     NSDictionary* defaults=FlameDefaultConfig();NSMutableDictionary* config=[defaults mutableCopy];NSMutableDictionary* opts=[defaults[@"options"] mutableCopy];
     NSDictionary* supplied=[input[@"options"] isKindOfClass:NSDictionary.class]?input[@"options"]:@{};
-    for(NSString* key in opts)if([supplied[key] isKindOfClass:NSNumber.class])opts[key]=@([supplied[key] boolValue]);
+    for(NSString* key in defaults[@"options"])if([supplied[key] isKindOfClass:NSNumber.class])opts[key]=@([supplied[key] boolValue]);
     opts[FlameOptionKey(Master)]=@NO;config[@"options"]=opts;
     for(NSString* key in defaults)if(![key isEqual:@"options"]&&[input[key] isKindOfClass:NSNumber.class]&&std::isfinite([input[key] doubleValue]))config[key]=input[key];
     for(NSString* key in defaults)if(![key isEqual:@"options"])[self flameSetNumber:key value:[config[key] doubleValue]];

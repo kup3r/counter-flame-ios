@@ -228,7 +228,7 @@ struct State : FlamePatch::Memory {
             status=@"Материал запрошен; проверяю ключ в игре";
         }
     }
-    void restoreSkin(P ac,double now,bool& ok){
+    void restoreSkin(P ac,P parameters,bool resetCustomKnife,double now,bool& ok){
         for(auto it=skinHistory.begin();it!=skinHistory.end();++it){
             if(it->weapon!=observedWeapon)continue;
             if(it->skin.length)requestSkin(ac,it->skin,now,ok);
@@ -238,6 +238,11 @@ struct State : FlamePatch::Memory {
                 if(ok){expectedSkin=@"";skinWeapon=observedWeapon;verifySkinAfter=now+1;status=@"Оружие пересоздано; проверяю стандартный материал";}
             }else {status=@"Штатное восстановление материала недоступно";return;}
             if(ok){Runtime::gchandle_free(it->parameters);skinHistory.erase(it);}
+            return;
+        }
+        if(resetCustomKnife&&createWeapon){
+            equip(ac,parameters,ok);
+            if(ok){expectedSkin=@"";skinWeapon=observedWeapon;verifySkinAfter=now+1;status=@"Запрошен стандартный материал этой модели ножа";}
             return;
         }
         status=@"Автоприменение материала выключено для текущего оружия";
@@ -301,9 +306,10 @@ struct State : FlamePatch::Memory {
             return true;
         }
         if([action isEqual:@"restoreSkin"]){
+            bool customKnife=desiredSkins[@(held)]&&desiredKnife&&held==[desiredKnife[@"id"] intValue];
             [desiredSkins removeObjectForKey:@(held)];
             expectedSkin=nil;attemptedSkin=nil;skinVerified=false;
-            restoreSkin(ac,now,ok);
+            restoreSkin(ac,p,customKnife,now,ok);
             return true;
         }
         if([action isEqual:@"restoreModel"]){
