@@ -1,9 +1,11 @@
-# iOS marker prototype
+# iOS marker prototype — diagnostic v2
 
-FlameMarkers.mm builds an arm64 dynamic library. Open the menu with two taps using three fingers. Player markers can be toggled in the menu.
+Open the menu with two taps using three fingers. Player markers start OFF. Enter a match with them off, then turn them on after loading. Turn them off again before leaving or entering another match.
 
-This is an experimental in-process Unity/IL2CPP prototype. It has no fixed game offsets. It resolves classes and methods at runtime. No Silent Aim or No Recoil implementation is included. Player root positions are shown; team, health and bounds are not resolved.
+The user confirmed that v1 crashes during match loading with markers enabled, but works when enabled only after entering the match. A crash report has not been inspected, so the exact failing call is unknown.
 
-Build: Actions → Build unsigned iOS marker prototype → Run workflow. Download FlameMarkers-unsigned after a successful run. The workflow does not consume Apple App IDs, sign or install an app. The dylib still requires integration into an IPA and final signing. Successful compilation does not verify behavior on an iPhone.
+V2 retains managed return values with GC handles during each sampling pass, stops calls after a managed exception, verifies thread attachment, checks the active scene's loaded state and handle, waits five seconds after enabling or a detected transition, rejects destroyed player objects and non-finite projected coordinates, and reduces sampling to twice a second. Scene checks are an extra precaution: they cannot detect every loading phase, especially when the active scene is unchanged. The explicit off-during-loading workaround remains required until tested further.
 
-Do not upload game IPA archives or signing credentials to this repository.
+This is an experimental Unity/IL2CPP library for execution inside the game process. No fixed game offsets, Silent Aim, No Recoil, team filtering, health or bounds are implemented.
+
+Build: Actions → Build unsigned iOS marker prototype. A successful workflow produces an arm64 dylib, not an installed or signed app. Compilation does not verify runtime safety on an iPhone. Building does not consume Apple App IDs. Do not upload game IPA archives or signing credentials to this public repository.
