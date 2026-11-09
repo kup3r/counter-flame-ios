@@ -12,6 +12,8 @@ struct State {
     void (*read)(P,P,P)=nullptr;
     void (*write)(P,P,P)=nullptr;
     P (*string_new)(const char*)=nullptr;
+    P (*class_from_type)(P)=nullptr;
+    bool (*class_is_value)(P)=nullptr;
     P arms=nullptr,lock=nullptr,current=nullptr,recoil=nullptr,isKnife=nullptr;
     P euler=nullptr,setEuler=nullptr,goTransform=nullptr,lookLimit=nullptr;
     P controlsClass=nullptr,shootButton=nullptr,pressed=nullptr;
@@ -27,8 +29,9 @@ struct State {
 #define EXTRA_LOAD(v,n) v=reinterpret_cast<decltype(v)>(dlsym(h,"il2cpp_" n))
         EXTRA_LOAD(field,"class_get_field_from_name");EXTRA_LOAD(field_type,"field_get_type");EXTRA_LOAD(field_flags,"field_get_flags");
         EXTRA_LOAD(read,"field_get_value");EXTRA_LOAD(write,"field_set_value");EXTRA_LOAD(string_new,"string_new");
+        EXTRA_LOAD(class_from_type,"class_from_type");EXTRA_LOAD(class_is_value,"class_is_valuetype");
 #undef EXTRA_LOAD
-        dlclose(h);if(!field||!field_type||!field_flags||!read||!write||!string_new)return false;
+        dlclose(h);if(!field||!field_type||!field_flags||!read||!write||!string_new||!class_from_type||!class_is_value)return false;
         P pc=cls("","PlayerController"),ac=cls("","ArmsController"),pl=cls("ScarletWork.Game","PlayerLock");
         arms=method(pc,"get_ArmsController",0);lock=method(pc,"get_PlayerLock",0);
         current=method(ac,"get_CurrentParamters",0);isKnife=method(ac,"get_isKnife",0);
@@ -42,13 +45,15 @@ struct State {
         findAll=method(cls("UnityEngine","Resources"),"FindObjectsOfTypeAll",1,"System.Type");
         loadParameters=method(cls("ScarletWork.Utility","ResourceUtility"),"LoadWeaponParameters",1,"System.String");
         createWeapon=method(ac,"CreateWeapon",7,"WeaponParameters");setSkin=method(ac,"SetSkin",2,"System.String");
-        if(!parametersMatch(createWeapon,{"WeaponParameters","System.String","StatTrak","System.Boolean","System.Byte[]","System.Int32","System.Int32"}))createWeapon=nullptr;
+        if(!parametersMatch(createWeapon,{"WeaponParameters","System.String","StatTrak","System.Boolean","<reference>","System.Int32","System.Int32"}))createWeapon=nullptr;
         if(!parametersMatch(setSkin,{"System.String","StatTrak"}))setSkin=nullptr;
         ready=arms&&current&&isKnife&&recoil&&weaponId;return ready;
     }
     bool parametersMatch(P method,std::initializer_list<const char*> expected){
         if(!method||Runtime::method_get_param_count(method)!=expected.size())return false;
-        int i=0;for(const char* type:expected){char* actual=Runtime::type_get_name(Runtime::method_get_param(method,i++));bool same=actual&&!strcmp(actual,type);if(actual)Runtime::free_(actual);if(!same)return false;}return true;
+        int i=0;for(const char* type:expected){P param=Runtime::method_get_param(method,i++);char* actual=Runtime::type_get_name(param);bool same=actual&&!strcmp(actual,type);
+            if(!strcmp(type,"<reference>")){P cls=class_from_type(param);same=actual&&cls&&!class_is_value(cls)&&!strchr(actual,'&')&&!strchr(actual,'*');}
+            if(actual)Runtime::free_(actual);if(!same)return false;}return true;
     }
     P typedField(P cls,const char* name,const char* expected){
         if(!cls)return nullptr;P f=field(cls,name);if(!f||(field_flags(f)&(0x10|0x40)))return nullptr;
