@@ -1,0 +1,11 @@
+#pragma once
+
+static NSArray<NSDictionary*>* FlameGloveCatalog(){
+    static NSArray<NSDictionary*>* catalog;
+    static dispatch_once_t once;
+    dispatch_once(&once,^{
+        NSString* json=[NSString stringWithUTF8String:R"FLAME([{"key":"driver_blacktie","label":"Black Tie","type":4},{"key":"handwrap_caution","label":"CAUTION!","type":1},{"key":"moto_coolmint","label":"Cool Mint","type":3},{"key":"moto_finishline","label":"Finish Line","type":3},{"key":"moto_pow","label":"POW","type":3},{"key":"moto_spearmint","label":"Spearmint","type":3},{"key":"slick_chaser","label":"Wave Chaser","type":4},{"key":"slick_crane","label":"Brocade Crane","type":4},{"key":"slick_dragonfists","label":"Dragon Fists","type":4},{"key":"slick_flowers","label":"Brocade Flowers","type":4},{"key":"slick_garden","label":"Garden","type":4},{"key":"slick_plumquil","label":"Plum Quill","type":4},{"key":"slick_seigaiha","label":"Seigaiha","type":4},{"key":"slick_sweaters","label":"Hand Sweaters","type":4},{"key":"specialist_bigswell","label":"Big Swell","type":5},{"key":"specialist_blackbook","label":"Blackbook","type":5},{"key":"specialist_chocolate","label":"Chocolate Chesterfield","type":5},{"key":"specialist_cloudchaser","label":"Cloud Chaser","type":5},{"key":"specialist_lime","label":"Lime Polycam","type":5},{"key":"specialist_pillow","label":"Pillow Punchers","type":5},{"key":"specialist_sunburst","label":"Sunburst","type":5},{"key":"sport_amphibious","label":"Amphibious","type":2},{"key":"sport_blaze","label":"Blaze","type":2},{"key":"sport_creme","label":"Creme Pinstripe","type":2},{"key":"sport_frosty","label":"Frosty","type":2},{"key":"sport_hedgemaze","label":"Hedge Maze","type":2},{"key":"sport_occult","label":"Occult","type":2},{"key":"sport_pandorabox","label":"Pandora Box","type":2},{"key":"sport_redracer","label":"Red Racer","type":2},{"key":"sport_slingshot","label":"Slingshot","type":2},{"key":"sport_ultraviolent","label":"Ultra Violent","type":2},{"key":"sport_vice","label":"Vice","type":2},{"key":"sport_violetbeadwork","label":"Violet Beadwork","type":2}])FLAME"];
+        catalog=[NSJSONSerialization JSONObjectWithData:[json dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil];
+    });
+    return catalog;
+}

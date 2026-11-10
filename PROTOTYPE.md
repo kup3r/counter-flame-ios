@@ -1,4 +1,4 @@
-# Flame v10
+# Flame v11
 
 A native arm64 in-process module for the supplied CounterFlame 1.4.1 build 7 IPA. No fixed game addresses or hard-coded field offsets. Menu and additional gameplay controls need on-device testing.
 
@@ -35,7 +35,13 @@ The requested knife and skin keys are kept in memory for the game session and re
 - TriggerBot traces with the weapon's game layer mask and requires the first hit to resolve to a living opponent. It uses ArmsController.Shoot after a configurable dwell and checks the game's own shooting predicates. Bunnyhop uses the game's held-jump behavior and restores the two local settings when disabled.
 - The sticker catalog lists 116 kits read from the game bundle. A selected slot is sent to WeaponController.ShowStickers for the held weapon, using the game’s StickerCodec to construct the managed StickerData list while preserving entries in other slots. This is a local appearance request.
 
-Native gameplay paths remain subject to iPhone testing. AutoWin, Plant Anywhere, Defuse Anywhere and opponent-facing Anti Aim are absent. No game binary or metadata dump is committed.
+Native gameplay paths remain subject to iPhone testing. Opponent-facing Anti Aim is absent. No game binary or metadata dump is committed.
+
+## v11 gloves and solo practice
+
+- Skins → Перчатки lists 33 gloves from the shipped iOS asset definitions and sprites. The local held weapon's GlovesController resolves the selected mesh and loads the existing material. The session selection follows weapon swaps and respawns. Reset requests the original inventory appearance.
+- Misc → Раунд includes AutoWin, Plant Anywhere and Defuse Anywhere. They require a one-participant room with local host authority. The room must be offline, or owned by the local player with the game's private-room cheats enabled. Plant Anywhere requires a living TR with C4 and a floor hit. Defuse Anywhere requires a living CT and an active bomb. AutoWin requests a stock round-end phase once per active round for the local side.
+- All game actions still require an iPhone match check. The archive remains a single dylib.
 
 ## Validation
 

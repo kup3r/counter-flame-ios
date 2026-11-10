@@ -3,6 +3,7 @@
 #include "FlameCatalog.hpp"
 #include "FlameSkinArtwork.hpp"
 #include "FlameStickerCatalog.hpp"
+#include "FlameGloveCatalog.hpp"
 static UIColor* FlameAccent(NSInteger index){switch(index){case 1:return [UIColor colorWithRed:0.95 green:0.63 blue:0.15 alpha:1];case 2:return [UIColor colorWithRed:0.22 green:0.85 blue:0.48 alpha:1];case 3:return [UIColor colorWithRed:1 green:0.31 blue:0.28 alpha:1];default:return [UIColor colorWithRed:0.1 green:0.82 blue:0.83 alpha:1];}}
 @protocol FlameMenuDelegate<NSObject>
 - (void)flameSetOption:(NSInteger)tag value:(BOOL)value;
@@ -113,7 +114,7 @@ static UIColor* FlameAccent(NSInteger index){switch(index){case 1:return [UIColo
         self.backgroundColor=[UIColor colorWithRed:.96 green:.93 blue:.85 alpha:.97];self.layer.cornerRadius=7;self.layer.borderWidth=1;self.layer.borderColor=[UIColor colorWithWhite:.35 alpha:.45].CGColor;self.clipsToBounds=YES;
         CGFloat side=108;_sidebar=[[UIView alloc]initWithFrame:CGRectMake(0,0,side,frame.size.height)];_sidebar.autoresizingMask=UIViewAutoresizingFlexibleHeight;_sidebar.backgroundColor=[UIColor colorWithRed:.58 green:.6 blue:.57 alpha:1];[self addSubview:_sidebar];
         UILabel* brand=[self label:@"◉ FLAME" frame:CGRectMake(10,11,98,29) size:19 bold:YES parent:_sidebar];brand.textColor=[UIColor colorWithRed:1 green:.85 blue:.27 alpha:1];
-        [self label:@"iOS · v10" frame:CGRectMake(15,42,88,18) size:11 bold:YES parent:_sidebar];
+        [self label:@"iOS · v11" frame:CGRectMake(15,42,88,18) size:11 bold:YES parent:_sidebar];
         NSArray* names=@[@"◉ Visual",@"⌖ Aim",@"▦ Misc",@"◇ Skins",@"▣ Config"];
         for(NSInteger i=0;i<names.count;i++){UIButton* b=[self button:names[i] frame:CGRectMake(8,77+i*42,92,35) target:@selector(selectTab:) tag:100+i parent:_sidebar];[_tabs addObject:b];}
         _master=[self option:Master title:@"ON" x:10 y:frame.size.height-45 width:89 parent:_sidebar];_master.autoresizingMask=UIViewAutoresizingFlexibleTopMargin;
@@ -179,7 +180,7 @@ static UIColor* FlameAccent(NSInteger index){switch(index){case 1:return [UIColo
     note.numberOfLines=0;return p;
 }
 - (UIView*)makeMisc{
-    UIScrollView* p=[self scrollPage];CGFloat w=p.bounds.size.width,col=(w-22)/2;p.contentSize=CGSizeMake(w,365);
+    UIScrollView* p=[self scrollPage];CGFloat w=p.bounds.size.width,col=(w-22)/2;p.contentSize=CGSizeMake(w,478);
     [self section:@"Movement" x:0 y:0 width:col parent:p];[self option:Speed title:@"SpeedHack · клиент" x:0 y:32 width:col parent:p];[self slider:@"speedFactor" title:@"Множитель скорости" min:1 max:3 x:0 y:75 width:col parent:p];
     [self option:BunnyHop title:@"Bunnyhop при удержании" x:0 y:130 width:col parent:p];
     [self section:@"Ammo / Camera" x:col+22 y:0 width:col parent:p];[self option:Ammo title:@"Unlimited Ammo · клиент" x:col+22 y:32 width:col parent:p];[self option:Fov title:@"Фиксированный FOV" x:col+22 y:65 width:col parent:p];[self slider:@"fov" title:@"Угол обзора" min:60 max:120 x:col+22 y:105 width:col parent:p];
@@ -187,14 +188,23 @@ static UIColor* FlameAccent(NSInteger index){switch(index){case 1:return [UIColo
     [self slider:@"cameraDistance" title:@"Дистанция камеры" min:1 max:5 x:col+22 y:194 width:col parent:p];
     [self option:Spin title:@"Вращение персонажа" x:0 y:163 width:col parent:p];
     [self slider:@"spinSpeed" title:@"Скорость вращения (°/с)" min:45 max:720 x:0 y:198 width:col parent:p];
-    UILabel* note=[self label:@"Скорость и боезапас меняются у живого локального игрока. Сервер может исправлять эти значения. При выключении модуль восстанавливает сохранённые настройки скорости, разброса, отдачи и FOV." frame:CGRectMake(0,252,w,100) size:12 bold:NO parent:p];note.numberOfLines=0;return p;
+    UILabel* note=[self label:@"Скорость и боезапас меняются у живого локального игрока. Сервер может исправлять эти значения. При выключении модуль восстанавливает сохранённые настройки скорости, разброса, отдачи и FOV." frame:CGRectMake(0,252,w,65) size:12 bold:NO parent:p];note.numberOfLines=0;
+    [self section:@"Раунд · одиночная тренировка" x:0 y:325 width:w parent:p];
+    [self option:PracticeWin title:@"AutoWin" x:0 y:353 width:col parent:p];
+    [self button:@"Plant Anywhere" frame:CGRectMake(0,397,col,31) target:@selector(practiceAction:) tag:701 parent:p];
+    [self button:@"Defuse Anywhere" frame:CGRectMake(col+22,397,col,31) target:@selector(practiceAction:) tag:702 parent:p];
+    [self label:@"Доступно в одиночном матче. Для своей комнаты включи читы игры." frame:CGRectMake(0,437,w,27) size:11 bold:NO parent:p];
+    return p;
+}
+- (void)practiceAction:(UIButton*)button{
+    [self.delegate flameConfigAction:button.tag==701?@"practicePlant":@"practiceDefuse"];
 }
 - (UIView*)makeSkins{
     UIView* p=[[UIView alloc]initWithFrame:_content.bounds];CGFloat w=p.bounds.size.width,h=p.bounds.size.height;
     _allWeapons=FlameCatalog()[@"weapons"];_weapons=_allWeapons;
     _search=[[UITextField alloc]initWithFrame:CGRectMake(0,0,w*.55,29)];_search.placeholder=@"Поиск оружия / скина";_search.borderStyle=UITextBorderStyleRoundedRect;_search.font=[UIFont systemFontOfSize:12];_search.clearButtonMode=UITextFieldViewModeWhileEditing;_search.delegate=self;[_search addTarget:self action:@selector(searchChanged) forControlEvents:UIControlEventEditingChanged];[p addSubview:_search];
     _weaponLabel=[self label:@"В руках: неизвестно" frame:CGRectMake(w*.57,0,w*.43,29) size:10 bold:YES parent:p];_weaponLabel.numberOfLines=2;
-    _categories=[[UISegmentedControl alloc]initWithItems:@[@"Все",@"Ножи",@"Пист.",@"Винт.",@"Снайп.",@"Другое",@"Наклейки"]];_categories.frame=CGRectMake(0,35,w,27);_categories.selectedSegmentIndex=0;[_categories addTarget:self action:@selector(searchChanged) forControlEvents:UIControlEventValueChanged];[p addSubview:_categories];
+    _categories=[[UISegmentedControl alloc]initWithItems:@[@"Все",@"Ножи",@"Пист.",@"Винт.",@"Снайп.",@"Другое",@"Наклейки",@"Перчатки"]];_categories.frame=CGRectMake(0,35,w,27);_categories.selectedSegmentIndex=0;[_categories addTarget:self action:@selector(searchChanged) forControlEvents:UIControlEventValueChanged];[p addSubview:_categories];
     CGFloat tableH=fmax(70,h-109),left=w*.27,gridWidth=w-left-7;
     _weaponTable=[[UITableView alloc]initWithFrame:CGRectMake(0,68,left,tableH) style:UITableViewStylePlain];
     _weaponTable.dataSource=self;_weaponTable.delegate=self;_weaponTable.rowHeight=30;
@@ -270,7 +280,7 @@ static UIColor* FlameAccent(NSInteger index){switch(index){case 1:return [UIColo
 - (void)searchChanged{
     NSString* query=[_search.text lowercaseString]?:@"";
     NSInteger category=_categories.selectedSegmentIndex;
-    if(category==6){_weaponFilter=nil;_selectedSkin=nil;_selectedWeapon=nil;_weapons=@[];[_weaponTable reloadData];[self filterSkins];return;}
+    if(category>=6){_weaponFilter=nil;_selectedSkin=nil;_selectedWeapon=nil;_weapons=@[];[_weaponTable reloadData];[self filterSkins];return;}
     _weapons=[_allWeapons filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(NSDictionary* w,NSDictionary*){
         NSString* c=w[@"category"];
         BOOL match=category==0||(category==1&&[c isEqual:@"knives"])||(category==2&&[c isEqual:@"pistols"])||(category==3&&[c isEqual:@"rifles"])||(category==4&&[c isEqual:@"snipers"])||(category==5&&![c isEqual:@"knives"]&&![c isEqual:@"pistols"]&&![c isEqual:@"rifles"]&&![c isEqual:@"snipers"]);
@@ -285,9 +295,14 @@ static UIColor* FlameAccent(NSInteger index){switch(index){case 1:return [UIColo
 - (void)filterSkins{
     NSString* query=[_search.text lowercaseString]?:@"";
     BOOL stickers=_categories.selectedSegmentIndex==6;
+    BOOL gloves=_categories.selectedSegmentIndex==7;
     _stickerSlot.hidden=!stickers;
-    for(NSInteger i=1;i<4;i++)[[_stickerSlot.superview viewWithTag:300+i]setHidden:stickers];
-    [_applySkin setTitle:stickers?@"Наклеить":@"Применить скин" forState:UIControlStateNormal];
+    for(NSInteger i=1;i<4;i++){
+        UIButton* button=(UIButton*)[_stickerSlot.superview viewWithTag:300+i];
+        button.hidden=stickers||(gloves&&i!=2);
+        if(i==2)[button setTitle:gloves?@"Сброс перчаток":@"Сброс скина" forState:UIControlStateNormal];
+    }
+    [_applySkin setTitle:stickers?@"Наклеить":gloves?@"Надеть":@"Применить скин" forState:UIControlStateNormal];
     NSArray* weapons=_weaponFilter?@[_weaponFilter]:_weapons;
     NSMutableArray* cards=[NSMutableArray array];
     BOOL selectionVisible=NO;
@@ -305,6 +320,12 @@ static UIColor* FlameAccent(NSInteger index){switch(index){case 1:return [UIColo
             if(item==_selectedSkin)selectionVisible=YES;
         }
     }
+    if(gloves)for(NSDictionary* item in FlameGloveCatalog()){
+        if(!query.length||[self skin:item matchesQuery:query]){
+            [cards addObject:@{@"skin":item}];
+            if(item==_selectedSkin)selectionVisible=YES;
+        }
+    }
     _skinCards=cards;
     if(!selectionVisible){_selectedSkin=nil;_selectedWeapon=_weaponFilter;}
     _skinEmpty.hidden=cards.count>0;
@@ -318,7 +339,8 @@ static UIColor* FlameAccent(NSInteger index){switch(index){case 1:return [UIColo
     }
     BOOL selectedKnife=[_selectedWeapon[@"category"] isEqual:@"knives"];
     BOOL sameWeapon=_selectedWeapon&&_currentWeapon==[_selectedWeapon[@"id"] integerValue];
-    _applySkin.enabled=_selectedSkin&&(_categories.selectedSegmentIndex==6?(_currentWeapon>=0&&!currentKnife):(sameWeapon||(currentKnife&&selectedKnife)));
+    NSInteger category=_categories.selectedSegmentIndex;
+    _applySkin.enabled=_selectedSkin&&(category==7|| (category==6?(_currentWeapon>=0&&!currentKnife):(sameWeapon||(currentKnife&&selectedKnife))));
     _applySkin.alpha=_applySkin.enabled?1:.4;
     _applyModel.enabled=currentKnife&&selectedKnife;
     _applyModel.alpha=_applyModel.enabled?1:.4;
@@ -332,7 +354,7 @@ static UIColor* FlameAccent(NSInteger index){switch(index){case 1:return [UIColo
     UITableViewCell* cell=[table dequeueReusableCellWithIdentifier:@"weapon"];
     if(!cell)cell=[[UITableViewCell alloc]initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"weapon"];
     NSDictionary* weapon=index.row?_weapons[index.row-1]:nil;
-    cell.textLabel.text=weapon?weapon[@"label"]:@"Все скины";
+    cell.textLabel.text=weapon?weapon[@"label"]:_categories.selectedSegmentIndex==7?@"Все перчатки":_categories.selectedSegmentIndex==6?@"Все наклейки":@"Все скины";
     cell.textLabel.font=[UIFont systemFontOfSize:11 weight:UIFontWeightSemibold];
     cell.textLabel.textColor=[self textColor];cell.backgroundColor=UIColor.clearColor;
     cell.accessoryType=weapon==_weaponFilter?UITableViewCellAccessoryCheckmark:UITableViewCellAccessoryNone;
@@ -351,7 +373,7 @@ static UIColor* FlameAccent(NSInteger index){switch(index){case 1:return [UIColo
     UIImage* artwork=FlameSkinImage(skin[@"key"]);
     card.artwork.image=artwork?:[UIImage systemImageNamed:_categories.selectedSegmentIndex==6?@"seal":@"photo"];
     card.caption.text=skin[@"label"];
-    card.accessibilityLabel=[NSString stringWithFormat:@"%@, %@%@",entry[@"weapon"][@"label"]?:@"Наклейка",skin[@"label"],(artwork||_categories.selectedSegmentIndex==6)?@"":@", изображение недоступно"];
+    card.accessibilityLabel=[NSString stringWithFormat:@"%@, %@%@",entry[@"weapon"][@"label"]?:(_categories.selectedSegmentIndex==7?@"Перчатки":@"Наклейка"),skin[@"label"],(artwork||_categories.selectedSegmentIndex==6)?@"":@", изображение недоступно"];
     card.isAccessibilityElement=YES;
     card.layer.borderColor=(skin==_selectedSkin?FlameAccent(1):[UIColor colorWithWhite:.38 alpha:1]).CGColor;
     return card;
@@ -364,6 +386,11 @@ static UIColor* FlameAccent(NSInteger index){switch(index){case 1:return [UIColo
 - (void)skinAction:(UIButton*)b{
     NSArray* actions=@[@"skin",@"model",@"restoreSkin",@"restoreModel"];
     [self endEditing:YES];
+    if(_categories.selectedSegmentIndex==7){
+        if(b.tag==302)[self.delegate flameSkinAction:@"restoreGloves" weapon:nil skin:nil];
+        else if(_selectedSkin)[self.delegate flameSkinAction:@"gloves" weapon:nil skin:_selectedSkin];
+        return;
+    }
     if(_categories.selectedSegmentIndex==6){
         if(_selectedSkin){
             NSMutableDictionary* sticker=[_selectedSkin mutableCopy];

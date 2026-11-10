@@ -22,6 +22,8 @@
             artwork++;
         }
         assert(artwork==[FlameCatalog()[@"skinCount"] unsignedIntegerValue]);
+        assert(FlameGloveCatalog().count==33);
+        for(NSDictionary* glove in FlameGloveCatalog())assert(FlameSkinImage(glove[@"key"])!=nil);
     }
     [menu showTab:tab];
     menu.statusLabel.text=@"Предпросмотр UIKit · данные каталога из IPA · игровые функции здесь не выполняются";
