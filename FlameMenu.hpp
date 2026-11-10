@@ -77,7 +77,7 @@ static UIColor* FlameAccent(NSInteger index){switch(index){case 1:return [UIColo
     UITableView* _weaponTable;UICollectionView* _skinGrid;UILabel* _skinEmpty;UITextField* _search;UISegmentedControl* _categories;
     NSArray* _allWeapons;NSArray* _weapons;NSArray<NSDictionary*>* _skinCards;NSDictionary* _weaponFilter;NSDictionary* _selectedWeapon;NSDictionary* _selectedSkin;
     UIButton* _applySkin;UIButton* _applyModel;UISegmentedControl* _stickerSlot;NSInteger _currentWeapon,_activeTab;
-    UISegmentedControl* _aimPoints;UISegmentedControl* _colorSegments;UISegmentedControl* _fpsSegments;
+    UISegmentedControl* _spinModes;UISegmentedControl* _aimPoints;UISegmentedControl* _colorSegments;UISegmentedControl* _fpsSegments;
     CGPoint _dragOrigin;
 }
 - (UIColor*)textColor{return [UIColor colorWithRed:.27 green:.28 blue:.26 alpha:1];}
@@ -114,7 +114,7 @@ static UIColor* FlameAccent(NSInteger index){switch(index){case 1:return [UIColo
         self.backgroundColor=[UIColor colorWithRed:.96 green:.93 blue:.85 alpha:.97];self.layer.cornerRadius=7;self.layer.borderWidth=1;self.layer.borderColor=[UIColor colorWithWhite:.35 alpha:.45].CGColor;self.clipsToBounds=YES;
         CGFloat side=108;_sidebar=[[UIView alloc]initWithFrame:CGRectMake(0,0,side,frame.size.height)];_sidebar.autoresizingMask=UIViewAutoresizingFlexibleHeight;_sidebar.backgroundColor=[UIColor colorWithRed:.58 green:.6 blue:.57 alpha:1];[self addSubview:_sidebar];
         UILabel* brand=[self label:@"◉ FLAME" frame:CGRectMake(10,11,98,29) size:19 bold:YES parent:_sidebar];brand.textColor=[UIColor colorWithRed:1 green:.85 blue:.27 alpha:1];
-        [self label:@"iOS · v11" frame:CGRectMake(15,42,88,18) size:11 bold:YES parent:_sidebar];
+        [self label:@"iOS · v12" frame:CGRectMake(15,42,88,18) size:11 bold:YES parent:_sidebar];
         NSArray* names=@[@"◉ Visual",@"⌖ Aim",@"▦ Misc",@"◇ Skins",@"▣ Config"];
         for(NSInteger i=0;i<names.count;i++){UIButton* b=[self button:names[i] frame:CGRectMake(8,77+i*42,92,35) target:@selector(selectTab:) tag:100+i parent:_sidebar];[_tabs addObject:b];}
         _master=[self option:Master title:@"ON" x:10 y:frame.size.height-45 width:89 parent:_sidebar];_master.autoresizingMask=UIViewAutoresizingFlexibleTopMargin;
@@ -158,7 +158,7 @@ static UIColor* FlameAccent(NSInteger index){switch(index){case 1:return [UIColo
 - (UIView*)makeAim{
     UIScrollView* p=[self scrollPage];
     CGFloat w=p.bounds.size.width,col=(w-22)/2,right=col+22;
-    p.contentSize=CGSizeMake(w,360);
+    p.contentSize=CGSizeMake(w,380);
     [self section:@"AIM / Weapon" x:0 y:0 width:col parent:p];
     [self option:Aim title:@"AIM при огне" x:0 y:32 width:col parent:p];
     [self option:AimRing title:@"Показывать радиус" x:0 y:65 width:col parent:p];
@@ -176,11 +176,12 @@ static UIColor* FlameAccent(NSInteger index){switch(index){case 1:return [UIColo
     [_aimPoints addTarget:self action:@selector(changeAimPoint:) forControlEvents:UIControlEventValueChanged];[p addSubview:_aimPoints];
     [self option:Trigger title:@"TriggerBot · тест" x:0 y:199 width:col parent:p];
     [self slider:@"triggerDelay" title:@"Задержка TriggerBot (мс)" min:0 max:350 x:0 y:231 width:col parent:p];
-    UILabel* note=[self label:@"Наведение при удержании огня. Проверка видимости отсутствует.\n\nПоказания No Spread отображаются внизу." frame:CGRectMake(0,280,col,75) size:11 bold:NO parent:p];
+    [self option:WallShot title:@"WallShot · пробитие" x:0 y:277 width:col parent:p];
+    UILabel* note=[self label:@"Наведение при удержании огня. Проверка видимости отсутствует.\n\nПоказания No Spread отображаются внизу." frame:CGRectMake(0,309,col,63) size:11 bold:NO parent:p];
     note.numberOfLines=0;return p;
 }
 - (UIView*)makeMisc{
-    UIScrollView* p=[self scrollPage];CGFloat w=p.bounds.size.width,col=(w-22)/2;p.contentSize=CGSizeMake(w,478);
+    UIScrollView* p=[self scrollPage];CGFloat w=p.bounds.size.width,col=(w-22)/2,right=col+22;p.contentSize=CGSizeMake(w,930);
     [self section:@"Movement" x:0 y:0 width:col parent:p];[self option:Speed title:@"SpeedHack · клиент" x:0 y:32 width:col parent:p];[self slider:@"speedFactor" title:@"Множитель скорости" min:1 max:3 x:0 y:75 width:col parent:p];
     [self option:BunnyHop title:@"Bunnyhop при удержании" x:0 y:130 width:col parent:p];
     [self section:@"Ammo / Camera" x:col+22 y:0 width:col parent:p];[self option:Ammo title:@"Unlimited Ammo · клиент" x:col+22 y:32 width:col parent:p];[self option:Fov title:@"Фиксированный FOV" x:col+22 y:65 width:col parent:p];[self slider:@"fov" title:@"Угол обзора" min:60 max:120 x:col+22 y:105 width:col parent:p];
@@ -194,7 +195,41 @@ static UIColor* FlameAccent(NSInteger index){switch(index){case 1:return [UIColo
     [self button:@"Plant Anywhere" frame:CGRectMake(0,397,col,31) target:@selector(practiceAction:) tag:701 parent:p];
     [self button:@"Defuse Anywhere" frame:CGRectMake(col+22,397,col,31) target:@selector(practiceAction:) tag:702 parent:p];
     [self label:@"Доступно в одиночном матче. Для своей комнаты включи читы игры." frame:CGRectMake(0,437,w,27) size:11 bold:NO parent:p];
+    [self section:@"Помощники движения" x:0 y:478 width:col parent:p];
+    [self option:AutoStrafe title:@"Auto-Strafe · тест" x:0 y:510 width:col parent:p];
+    [self option:EdgeJump title:@"Edge Jump · тест" x:0 y:542 width:col parent:p];
+    [self option:UnlimitedDuck title:@"Unlimited Duck" x:0 y:574 width:col parent:p];
+    [self section:@"Эффекты гранат" x:right y:478 width:col parent:p];
+    [self option:AntiFlash title:@"Anti Flash" x:right y:510 width:col parent:p];
+    [self option:AntiSmoke title:@"Anti Smoke · тест" x:right y:542 width:col parent:p];
+    [self section:@"Поворот модели" x:0 y:621 width:col parent:p];
+    _spinModes=[[UISegmentedControl alloc]initWithItems:@[@"Spin",@"Backward",@"Jitter"]];
+    _spinModes.frame=CGRectMake(0,651,col,29);_spinModes.selectedSegmentIndex=[_config[@"spinMode"] integerValue];
+    [_spinModes addTarget:self action:@selector(changeSpinMode:) forControlEvents:UIControlEventValueChanged];[p addSubview:_spinModes];
+    [self slider:@"spinPitch" title:@"Наклон модели (°)" min:-45 max:45 x:0 y:688 width:col parent:p];
+    [self section:@"Сеть · своя закрытая комната" x:right y:621 width:col parent:p];
+    [self option:FakeLag title:@"Fake Lag · тест" x:right y:651 width:col parent:p];
+    [self slider:@"lagMs" title:@"Задержка (мс)" min:30 max:250 x:right y:688 width:col parent:p];
+    [self section:@"Grenade Helper" x:0 y:744 width:w parent:p];
+    [self option:NadeHelper title:@"Метки раскидок" x:0 y:774 width:col parent:p];
+    [self button:@"Сохранить точку" frame:CGRectMake(right,774,col,30) target:@selector(nadeAction:) tag:711 parent:p];
+    CGFloat third=(w-12)/3;
+    [self button:@"Следующая" frame:CGRectMake(0,811,third,30) target:@selector(nadeAction:) tag:712 parent:p];
+    [self button:@"Встать" frame:CGRectMake(third+6,811,third,30) target:@selector(nadeAction:) tag:713 parent:p];
+    [self button:@"Прицелиться" frame:CGRectMake(2*third+12,811,third,30) target:@selector(nadeAction:) tag:714 parent:p];
+    [self button:@"Удалить точку" frame:CGRectMake(0,847,third,30) target:@selector(nadeAction:) tag:715 parent:p];
+    UILabel* nadeNote=[self label:@"Метки сохраняются по картам. Автопозиция и наводка доступны в одиночной тренировке." frame:CGRectMake(0,882,w,36) size:11 bold:NO parent:p];
+    nadeNote.numberOfLines=2;
     return p;
+}
+- (void)changeSpinMode:(UISegmentedControl*)control{
+    _config[@"spinMode"]=@(control.selectedSegmentIndex);
+    [self.delegate flameSetNumber:@"spinMode" value:control.selectedSegmentIndex];
+}
+- (void)nadeAction:(UIButton*)button{
+    NSArray* actions=@[@"nadeSave",@"nadeNext",@"nadeStand",@"nadeAlign",@"nadeRemove"];
+    NSInteger index=button.tag-711;
+    if(index>=0&&index<(NSInteger)actions.count)[self.delegate flameConfigAction:actions[index]];
 }
 - (void)practiceAction:(UIButton*)button{
     [self.delegate flameConfigAction:button.tag==701?@"practicePlant":@"practiceDefuse"];
@@ -269,6 +304,7 @@ static UIColor* FlameAccent(NSInteger index){switch(index){case 1:return [UIColo
 - (void)sync:(NSDictionary*)config{
     _config=[config mutableCopy];_config[@"options"]=[config[@"options"] mutableCopy];for(NSNumber* tag in _switches)[self setRuntimeOption:tag.integerValue value:[config[@"options"][FlameOptionKey(tag.integerValue)] boolValue]];
     _aimPoints.selectedSegmentIndex=[config[@"aimPoint"] integerValue];
+    _spinModes.selectedSegmentIndex=[config[@"spinMode"] integerValue];
     for(NSString* key in _sliders){_sliders[key].value=[config[key] floatValue];[self refreshValue:key];}_colorSegments.selectedSegmentIndex=[config[@"accent"] integerValue];_fpsSegments.selectedSegmentIndex=[config[@"fps"] intValue]==30?0:1;[self refreshPreview];
 }
 - (BOOL)weapon:(NSDictionary*)weapon matchesQuery:(NSString*)query {

@@ -35,8 +35,13 @@ struct State {
     NSString* status=@"";
 
     P checked(Extra::State& extra,P cls,const char* name,const char* returns,std::initializer_list<const char*> args={}){
-        P method=Runtime::method(cls,name,(uint32_t)args.size(),args.size()?*args.begin():nullptr);
-        return extra.returns(method,returns)&&extra.parametersMatch(method,args)?method:nullptr;
+        if(!cls)return nullptr;
+        P iterator=nullptr;
+        while(P candidate=Runtime::class_get_methods(cls,&iterator)){
+            if(!strcmp(Runtime::method_get_name(candidate),name)&&
+                extra.returns(candidate,returns)&&extra.parametersMatch(candidate,args))return candidate;
+        }
+        return nullptr;
     }
     void init(Extra::State& extra){
         using namespace Runtime;
@@ -240,7 +245,7 @@ struct State {
         }
         gchandle_free(spinOwner);spinOwner=0;spinOffset=0;
     }
-    bool spin(Extra::State& extra,P skeleton,P camera,float degrees){
+    bool spin(Extra::State& extra,P skeleton,P camera,float degrees,int mode,float pitch,double now){
         using namespace Runtime;
         if(!initialized)init(extra);
         if(!skeleton||!camera||!transformGet||!isChildOf||!eulerGet||!eulerSet)return false;
@@ -256,7 +261,12 @@ struct State {
         if(!spinOwner){spinOwner=gchandle_new(transform,true);spinBefore=current;}
         else if(!sameAngles(current,spinApplied))spinBefore=current;
         spinOffset=Extra::State::angle(spinOffset+degrees);
-        V3 applied=spinBefore;applied.y=Extra::State::angle(applied.y+spinOffset);
+        float yaw=spinOffset;
+        if(mode==1)yaw=180.f;
+        else if(mode==2)yaw=fmod(now,0.24)<.12?95.f:-95.f;
+        V3 applied=spinBefore;
+        applied.x=Extra::State::angle(applied.x+pitch);
+        applied.y=Extra::State::angle(applied.y+yaw);
         P args[]={&applied};invoke(eulerSet,transform,args,ok);
         if(ok){spinApplied=applied;value(eulerGet,transform,nullptr,spinApplied,ok);}
         return ok;

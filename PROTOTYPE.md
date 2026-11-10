@@ -1,4 +1,4 @@
-# Flame v11
+# Flame v12
 
 A native arm64 in-process module for the supplied CounterFlame 1.4.1 build 7 IPA. No fixed game addresses or hard-coded field offsets. Menu and additional gameplay controls need on-device testing.
 
@@ -42,6 +42,15 @@ Native gameplay paths remain subject to iPhone testing. Opponent-facing Anti Aim
 - Skins → Перчатки lists 33 gloves from the shipped iOS asset definitions and sprites. The local held weapon's GlovesController resolves the selected mesh and loads the existing material. The session selection follows weapon swaps and respawns. Reset requests the original inventory appearance.
 - Misc → Раунд includes AutoWin, Plant Anywhere and Defuse Anywhere. They require a one-participant room with local host authority. The room must be offline, or owned by the local player with the game's private-room cheats enabled. Plant Anywhere requires a living TR with C4 and a floor hit. Defuse Anywhere requires a living CT and an active bomb. AutoWin requests a stock round-end phase once per active round for the local side.
 - All game actions still require an iPhone match check. The archive remains a single dylib.
+
+## v12 grenade effects, movement and lineups
+
+- Anti Flash disables the local flash Canvas. Anti Smoke changes supported opacity/color/depth properties of the smoke materials. Both restore captured render values when disabled.
+- Auto-Strafe uses the shipped SourceMove.AirAccelerate routine while airborne. Edge Jump checks ground ahead and requests the normal jump event. Unlimited Duck adjusts the local duck speed multiplier and timing values. These experimental client changes require device tests and may be corrected by the server.
+- Grenade Helper stores up to 24 player-made lineups per scene, with position and aim markers. The optional automatic positioning and alignment use the solo practice gate.
+- Pitch and yaw controls apply to the local visual skeleton with Spin, Backward and Jitter modes. Fake Lag uses Photon outgoing delay (30–250 ms) in a locally owned, private online room with game cheats enabled.
+- WallShot is a conservative trigger mode for a single thin penetrable surface. It checks the game’s material rules, exit trace, and estimated penetration loss, then requests an ordinary shot only if the next hit is a living enemy.
+- Blockbot, network Desync/Fake Duck and Air Stuck/Edge Bug are not present.
 
 ## Validation
 

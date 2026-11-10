@@ -9,6 +9,12 @@ on:
       - FlameCatalog.hpp
       - FlameOptions.hpp
       - FlamePatch.hpp
+      - FlameScene.hpp
+      - FlameEffects.hpp
+      - FlameMovement.hpp
+      - FlameNades.hpp
+      - FlameLag.hpp
+      - FlameInput.hpp
       - tests/**
       - .github/workflows/build.yml
 permissions:
