@@ -19,14 +19,17 @@ static Color hue(float degrees,float saturation=.78f,float brightness=1.f){
 
 struct State {
     struct Tint {uint32_t owner=0;const char* property=nullptr;Color before{},applied{};};
-    P renderSky=nullptr,ambientGet=nullptr,ambientSet=nullptr,ambientModeGet=nullptr,ambientModeSet=nullptr;
-    P sunGet=nullptr,transformGet=nullptr,eulerGet=nullptr,eulerSet=nullptr;
+    P skyType=nullptr,cameraSkyGet=nullptr,componentGet=nullptr,clearGet=nullptr,clearSet=nullptr,backgroundGet=nullptr,backgroundSet=nullptr;
+    P gradeActive=nullptr,gradeExposure=nullptr,gradeShadow=nullptr,gradeHighlight=nullptr,gradeApply=nullptr;
+    void (*staticRead)(P,P)=nullptr;
+    P transformGet=nullptr,eulerGet=nullptr,eulerSet=nullptr,isChildOf=nullptr;
     P hasColor=nullptr,colorGet=nullptr,colorSet=nullptr,materialGet=nullptr;
-    bool initialized=false,ambientSaved=false;
-    Color ambientBefore{},ambientApplied{};
-    int modeBefore=-1;
-    uint32_t sunOwner=0;
-    V3 sunBefore{},sunApplied{};
+    bool initialized=false;
+    uint32_t cameraOwner=0,gradeOwner=0,spinOwner=0;
+    int clearBefore=0;
+    Color backgroundBefore{},backgroundApplied{},shadowBefore{},shadowApplied{},highlightBefore{},highlightApplied{};
+    float exposureBefore=0,exposureApplied=0,spinOffset=0;
+    V3 spinBefore{},spinApplied{};
     Tint sky{},body{},lod{};
     double nextTick=0;
     NSString* status=@"";
@@ -41,23 +44,36 @@ struct State {
         uint32_t alignment=0;
         P color=cls("UnityEngine","Color");
         if(!color||class_value_size(color,&alignment)!=sizeof(Color))return;
-        P render=cls("UnityEngine","RenderSettings");
         P material=cls("UnityEngine","Material");
         P renderer=cls("UnityEngine","Renderer");
         P component=cls("UnityEngine","Component");
+        P camera=cls("UnityEngine","Camera");
         P transform=cls("UnityEngine","Transform");
-        P mode=cls("UnityEngine.Rendering","AmbientMode");
-        renderSky=checked(extra,render,"get_skybox","UnityEngine.Material");
-        ambientGet=checked(extra,render,"get_ambientLight","UnityEngine.Color");
-        ambientSet=checked(extra,render,"set_ambientLight","System.Void",{"UnityEngine.Color"});
-        if(mode&&class_value_size(mode,&alignment)==sizeof(int)){
-            ambientModeGet=checked(extra,render,"get_ambientMode","UnityEngine.Rendering.AmbientMode");
-            ambientModeSet=checked(extra,render,"set_ambientMode","System.Void",{"UnityEngine.Rendering.AmbientMode"});
+        P skybox=cls("UnityEngine","Skybox");
+        if(skybox)skyType=class_get_type(skybox);
+        cameraSkyGet=checked(extra,skybox,"get_material","UnityEngine.Material");
+        componentGet=checked(extra,component,"GetComponent","UnityEngine.Component",{"System.Type"});
+        P flags=cls("UnityEngine","CameraClearFlags");
+        if(flags&&class_value_size(flags,&alignment)==sizeof(int)){
+            clearGet=checked(extra,camera,"get_clearFlags","UnityEngine.CameraClearFlags");
+            clearSet=checked(extra,camera,"set_clearFlags","System.Void",{"UnityEngine.CameraClearFlags"});
         }
-        sunGet=checked(extra,render,"get_sun","UnityEngine.Light");
+        backgroundGet=checked(extra,camera,"get_backgroundColor","UnityEngine.Color");
+        backgroundSet=checked(extra,camera,"set_backgroundColor","System.Void",{"UnityEngine.Color"});
+
+        P grade=cls("","MapColorGrading");
+        gradeActive=grade?extra.field(grade,"_active"):nullptr;
+        if(gradeActive&&!(extra.field_flags(gradeActive)&0x10))gradeActive=nullptr;
+        gradeExposure=extra.typedField(grade,"exposure","System.Single");
+        gradeShadow=extra.typedField(grade,"shadowTint","UnityEngine.Color");
+        gradeHighlight=extra.typedField(grade,"highlightTint","UnityEngine.Color");
+        gradeApply=checked(extra,grade,"Apply","System.Void");
+        void* h=dlopen("@rpath/UnityFramework.framework/UnityFramework",RTLD_LAZY|RTLD_NOLOAD);
+        if(h){staticRead=reinterpret_cast<decltype(staticRead)>(dlsym(h,"il2cpp_field_static_get_value"));dlclose(h);}
         transformGet=checked(extra,component,"get_transform","UnityEngine.Transform");
-        eulerGet=checked(extra,transform,"get_eulerAngles","UnityEngine.Vector3");
-        eulerSet=checked(extra,transform,"set_eulerAngles","System.Void",{"UnityEngine.Vector3"});
+        eulerGet=checked(extra,transform,"get_localEulerAngles","UnityEngine.Vector3");
+        eulerSet=checked(extra,transform,"set_localEulerAngles","System.Void",{"UnityEngine.Vector3"});
+        isChildOf=checked(extra,transform,"IsChildOf","System.Boolean",{"UnityEngine.Transform"});
         hasColor=checked(extra,material,"HasProperty","System.Boolean",{"System.String"});
         colorGet=checked(extra,material,"GetColor","UnityEngine.Color",{"System.String"});
         colorSet=checked(extra,material,"SetColor","System.Void",{"System.String","UnityEngine.Color"});
@@ -116,80 +132,146 @@ struct State {
         if(ok)entry.applied=desired;
         return ok;
     }
-    void restoreSun(Extra::State& extra,bool restore){
+    void restoreBackground(Extra::State& extra,bool restore){
         using namespace Runtime;
-        if(!sunOwner)return;
-        P transform=gchandle_get_target(sunOwner);
-        bool ok=true;V3 current{};
-        if(restore&&extra.alive(transform,ok)&&value(eulerGet,transform,nullptr,current,ok)&&FlameDistanceSquared(current,sunApplied)<.01){
-            P args[]={&sunBefore};invoke(eulerSet,transform,args,ok);
+        if(!cameraOwner)return;
+        P camera=gchandle_get_target(cameraOwner);
+        bool ok=true;Color current{};int flags=0;
+        if(restore&&extra.alive(camera,ok)){
+            if(value(backgroundGet,camera,nullptr,current,ok)&&current.same(backgroundApplied)){
+                P args[]={&backgroundBefore};invoke(backgroundSet,camera,args,ok);
+            }
+            if(value(clearGet,camera,nullptr,flags,ok)&&flags==2){
+                P args[]={&clearBefore};invoke(clearSet,camera,args,ok);
+            }
         }
-        gchandle_free(sunOwner);sunOwner=0;
+        gchandle_free(cameraOwner);cameraOwner=0;
+    }
+    NSString* changeSky(Extra::State& extra,P camera,Color desired){
+        using namespace Runtime;
+        if(!camera)return @"Небо: камера недоступна";
+        bool ok=true;
+        if(skyType&&cameraSkyGet&&componentGet){
+            P type=type_get_object(skyType);if(type&&roots)roots->hold(type);
+            P args[]={type};P component=type?invoke(componentGet,camera,args,ok):nullptr;
+            P material=extra.alive(component,ok)?invoke(cameraSkyGet,component,nullptr,ok):nullptr;
+            if(tint(extra,sky,material,desired,true)){
+                restoreBackground(extra,true);return @"Небо: оттенок материала";
+            }
+        }
+        if(!clearSet||!backgroundSet)return @"Небо: камера без поддержки цвета";
+        ok=true;Color current{};int flags=0;
+        if(cameraOwner&&gchandle_get_target(cameraOwner)!=camera)restoreBackground(extra,true);
+        if(!value(backgroundGet,camera,nullptr,current,ok)||!value(clearGet,camera,nullptr,flags,ok)||!current.valid())
+            return @"Небо: цвет камеры недоступен";
+        if(!cameraOwner){cameraOwner=gchandle_new(camera,true);backgroundBefore=current;clearBefore=flags;}
+        else {
+            if(!current.same(backgroundApplied))backgroundBefore=current;
+            if(flags!=2)clearBefore=flags;
+        }
+        if(flags!=2){int solid=2;P args[]={&solid};invoke(clearSet,camera,args,ok);}
+        if(!current.same(desired)){P args[]={&desired};invoke(backgroundSet,camera,args,ok);}
+        if(ok)backgroundApplied=desired;
+        return ok?@"Небо: фон камеры":@"Небо: игра отклонила цвет";
     }
     void restoreLight(Extra::State& extra,bool sameScene){
         using namespace Runtime;
-        if(ambientSaved&&sameScene){
-            bool ok=true;Color current{};int mode=-1;
-            if(value(ambientGet,nullptr,nullptr,current,ok)&&current.same(ambientApplied)){
-                P args[]={&ambientBefore};invoke(ambientSet,nullptr,args,ok);
-            }
-            if(value(ambientModeGet,nullptr,nullptr,mode,ok)&&mode==3){P args[]={&modeBefore};invoke(ambientModeSet,nullptr,args,ok);}
+        if(!gradeOwner)return;
+        P grade=gchandle_get_target(gradeOwner);
+        bool ok=true;P active=nullptr;
+        if(sameScene&&gradeActive&&staticRead)staticRead(gradeActive,&active);
+        if(active==grade&&extra.alive(grade,ok)){
+            float exposure=0;Color shadow{},highlight{};
+            extra.read(grade,gradeExposure,&exposure);extra.read(grade,gradeShadow,&shadow);extra.read(grade,gradeHighlight,&highlight);
+            if(fabsf(exposure-exposureApplied)<.001f)extra.write(grade,gradeExposure,&exposureBefore);
+            if(shadow.same(shadowApplied))extra.write(grade,gradeShadow,&shadowBefore);
+            if(highlight.same(highlightApplied))extra.write(grade,gradeHighlight,&highlightBefore);
+            invoke(gradeApply,grade,nullptr,ok);
         }
-        ambientSaved=false;
-        restoreSun(extra,sameScene);
+        gchandle_free(gradeOwner);gradeOwner=0;
     }
     bool light(Extra::State& extra,float hour){
         using namespace Runtime;
-        bool ok=true,changed=false;
+        if(!staticRead||!gradeActive||!gradeExposure||!gradeShadow||!gradeHighlight||!gradeApply)return false;
+        P grade=nullptr;staticRead(gradeActive,&grade);
+        if(gradeOwner&&gchandle_get_target(gradeOwner)!=grade)restoreLight(extra,false);
+        bool ok=true;
+        if(!extra.alive(grade,ok))return false;
+        float exposure=0;Color shadow{},highlight{};
+        extra.read(grade,gradeExposure,&exposure);extra.read(grade,gradeShadow,&shadow);extra.read(grade,gradeHighlight,&highlight);
+        if(!std::isfinite(exposure)||!shadow.valid()||!highlight.valid())return false;
+        if(!gradeOwner){
+            gradeOwner=gchandle_new(grade,true);
+            exposureBefore=exposure;shadowBefore=shadow;highlightBefore=highlight;
+        }else{
+            if(fabsf(exposure-exposureApplied)>.001f)exposureBefore=exposure;
+            if(!shadow.same(shadowApplied))shadowBefore=shadow;
+            if(!highlight.same(highlightApplied))highlightBefore=highlight;
+        }
         float daylight=std::clamp(sinf((hour-6.f)*(float)M_PI/12.f),0.f,1.f);
-        float twilight=std::clamp(1.f-fabsf(daylight-.18f)*4.f,0.f,1.f);
-        Color desired{.10f+.60f*daylight+.25f*twilight,.14f+.64f*daylight,.25f+.57f*daylight,1.f};
-        if(ambientGet&&ambientSet&&ambientModeGet&&ambientModeSet){
-            int mode=-1;Color current{};
-            if(value(ambientModeGet,nullptr,nullptr,mode,ok)&&value(ambientGet,nullptr,nullptr,current,ok)&&current.valid()){
-                if(!ambientSaved||!current.same(ambientApplied))ambientBefore=current;
-                if(!ambientSaved||mode!=3)modeBefore=mode;
-                int flat=3;
-                if(mode!=flat){P args[]={&flat};invoke(ambientModeSet,nullptr,args,ok);}
-                if(!current.same(desired)){P args[]={&desired};invoke(ambientSet,nullptr,args,ok);}
-                ambientSaved=changed=ok;ambientApplied=desired;
-            }
+        float twilight=std::clamp(1.f-std::min(fabsf(hour-6.f),fabsf(hour-18.f))/2.5f,0.f,1.f);
+        exposureApplied=std::clamp(exposureBefore*(.48f+.67f*daylight+.18f*twilight),.2f,3.f);
+        shadowApplied={.44f+.56f*daylight,.63f+.37f*daylight,1.f,shadowBefore.a};
+        highlightApplied={.72f+.28f*daylight+.28f*twilight,.76f+.24f*daylight-.20f*twilight,1.f-.52f*twilight,highlightBefore.a};
+        if(fabsf(exposure-exposureApplied)>.001f||!shadow.same(shadowApplied)||!highlight.same(highlightApplied)){
+            extra.write(grade,gradeExposure,&exposureApplied);
+            extra.write(grade,gradeShadow,&shadowApplied);
+            extra.write(grade,gradeHighlight,&highlightApplied);
+            invoke(gradeApply,grade,nullptr,ok);
         }
-        if(sunGet&&transformGet&&eulerGet&&eulerSet){
-            bool sunOK=true;
-            P sun=invoke(sunGet,nullptr,nullptr,sunOK);
-            P transform=extra.alive(sun,sunOK)?invoke(transformGet,sun,nullptr,sunOK):nullptr;
-            if(sunOwner&&gchandle_get_target(sunOwner)!=transform)restoreSun(extra,true);
-            V3 current{};
-            if(extra.alive(transform,sunOK)&&value(eulerGet,transform,nullptr,current,sunOK)&&finiteV3(current)){
-                if(!sunOwner){sunOwner=gchandle_new(transform,true);sunBefore=current;}
-                else if(FlameDistanceSquared(current,sunApplied)>.01)sunBefore=current;
-                V3 wanted{fmodf((hour-6.f)*15.f+360.f,360.f),sunBefore.y,sunBefore.z};
-                if(FlameDistanceSquared(current,wanted)>.0001){P args[]={&wanted};invoke(eulerSet,transform,args,sunOK);}
-                if(sunOK){value(eulerGet,transform,nullptr,sunApplied,sunOK);changed=true;}
-            }
+        return ok;
+    }
+    static bool sameAngles(V3 a,V3 b){
+        return fabsf(Extra::State::angle(a.x-b.x))<.05f&&fabsf(Extra::State::angle(a.y-b.y))<.05f&&fabsf(Extra::State::angle(a.z-b.z))<.05f;
+    }
+    void restoreSpin(Extra::State& extra){
+        using namespace Runtime;
+        if(!spinOwner)return;
+        P transform=gchandle_get_target(spinOwner);
+        bool ok=true;V3 current{};
+        if(extra.alive(transform,ok)&&value(eulerGet,transform,nullptr,current,ok)&&sameAngles(current,spinApplied)){
+            P args[]={&spinBefore};invoke(eulerSet,transform,args,ok);
         }
-        return changed;
+        gchandle_free(spinOwner);spinOwner=0;spinOffset=0;
+    }
+    bool spin(Extra::State& extra,P skeleton,P camera,float degrees){
+        using namespace Runtime;
+        if(!initialized)init(extra);
+        if(!skeleton||!camera||!transformGet||!isChildOf||!eulerGet||!eulerSet)return false;
+        bool ok=true,containsCamera=false;
+        P transform=invoke(transformGet,skeleton,nullptr,ok);
+        P cameraTransform=invoke(transformGet,camera,nullptr,ok);
+        if(!transform||!cameraTransform||cameraTransform==transform)return false;
+        P parent[]={transform};
+        if(!value(isChildOf,cameraTransform,parent,containsCamera,ok)||containsCamera)return false;
+        if(spinOwner&&gchandle_get_target(spinOwner)!=transform)restoreSpin(extra);
+        V3 current{};
+        if(!value(eulerGet,transform,nullptr,current,ok)||!finiteV3(current))return false;
+        if(!spinOwner){spinOwner=gchandle_new(transform,true);spinBefore=current;}
+        else if(!sameAngles(current,spinApplied))spinBefore=current;
+        spinOffset=Extra::State::angle(spinOffset+degrees);
+        V3 applied=spinBefore;applied.y=Extra::State::angle(applied.y+spinOffset);
+        P args[]={&applied};invoke(eulerSet,transform,args,ok);
+        if(ok){spinApplied=applied;value(eulerGet,transform,nullptr,spinApplied,ok);}
+        return ok;
     }
     void restorePlayer(Extra::State& extra){
         restoreTint(extra,body,true);restoreTint(extra,lod,true);
     }
     void clear(Extra::State& extra,bool sameScene){
-        restoreTint(extra,sky,sameScene);
+        restoreTint(extra,sky,sameScene);restoreBackground(extra,sameScene);restoreSpin(extra);
         restoreTint(extra,body,sameScene);restoreTint(extra,lod,sameScene);
         restoreLight(extra,sameScene);nextTick=0;status=@"";
     }
     void tick(Extra::State& extra,double now,bool changeSky,float skyHue,bool changeLight,float hour,
-              bool changePlayer,float playerHue,P bodyRenderer,P lodRenderer){
+              bool changePlayer,float playerHue,P bodyRenderer,P lodRenderer,P camera){
         using namespace Runtime;
         if(now<nextTick)return;
         nextTick=now+.15;
         if(!initialized)init(extra);
         NSMutableArray* states=[NSMutableArray array];
-        if(changeSky){
-            bool ok=true;P material=renderSky?invoke(renderSky,nullptr,nullptr,ok):nullptr;
-            [states addObject:tint(extra,sky,material,hue(skyHue,.63f),true)?@"небо":@"небо: шейдер без цвета"];
-        }else restoreTint(extra,sky,true);
+        if(changeSky)[states addObject:this->changeSky(extra,camera,hue(skyHue,.63f))];
+        else {restoreTint(extra,sky,true);restoreBackground(extra,true);}
         if(changeLight)[states addObject:light(extra,hour)?@"свет":@"свет: API недоступен"];
         else restoreLight(extra,true);
         if(changePlayer){

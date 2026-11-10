@@ -113,7 +113,7 @@ static UIColor* FlameAccent(NSInteger index){switch(index){case 1:return [UIColo
         self.backgroundColor=[UIColor colorWithRed:.96 green:.93 blue:.85 alpha:.97];self.layer.cornerRadius=7;self.layer.borderWidth=1;self.layer.borderColor=[UIColor colorWithWhite:.35 alpha:.45].CGColor;self.clipsToBounds=YES;
         CGFloat side=108;_sidebar=[[UIView alloc]initWithFrame:CGRectMake(0,0,side,frame.size.height)];_sidebar.autoresizingMask=UIViewAutoresizingFlexibleHeight;_sidebar.backgroundColor=[UIColor colorWithRed:.58 green:.6 blue:.57 alpha:1];[self addSubview:_sidebar];
         UILabel* brand=[self label:@"◉ FLAME" frame:CGRectMake(10,11,98,29) size:19 bold:YES parent:_sidebar];brand.textColor=[UIColor colorWithRed:1 green:.85 blue:.27 alpha:1];
-        [self label:@"iOS · v9" frame:CGRectMake(15,42,88,18) size:11 bold:YES parent:_sidebar];
+        [self label:@"iOS · v10" frame:CGRectMake(15,42,88,18) size:11 bold:YES parent:_sidebar];
         NSArray* names=@[@"◉ Visual",@"⌖ Aim",@"▦ Misc",@"◇ Skins",@"▣ Config"];
         for(NSInteger i=0;i<names.count;i++){UIButton* b=[self button:names[i] frame:CGRectMake(8,77+i*42,92,35) target:@selector(selectTab:) tag:100+i parent:_sidebar];[_tabs addObject:b];}
         _master=[self option:Master title:@"ON" x:10 y:frame.size.height-45 width:89 parent:_sidebar];_master.autoresizingMask=UIViewAutoresizingFlexibleTopMargin;

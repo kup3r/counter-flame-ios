@@ -14,7 +14,9 @@ struct State : FlamePatch::Memory {
     P (*string_new)(const char*)=nullptr;
     P (*class_from_type)(P)=nullptr;
     P (*object_new)(P)=nullptr;
-    P (*object_get_class)(P)=nullptr;
+    P (*array_new)(P,uintptr_t)=nullptr;
+    P (*value_box)(P,P)=nullptr;
+    P statTrakClass=nullptr,statTrakCtor=nullptr;
     P (*method_return_type)(P)=nullptr;
     bool (*class_is_value)(P)=nullptr;
     P arms=nullptr,lock=nullptr,current=nullptr,recoil=nullptr,isKnife=nullptr;
@@ -33,10 +35,11 @@ struct State : FlamePatch::Memory {
     int skinWeapon=-1;
     bool skinVerified=false;
     bool knifeMaterialFallback=false,knifeMaterialTried=false;
-    P movement=nullptr,speedGet=nullptr,ammoCurrent=nullptr,ammoConfig=nullptr,ammoMag=nullptr,ammoReserve=nullptr,ammoSet=nullptr;
+    P movement=nullptr,speedGet=nullptr,horizontalGet=nullptr,speedField=nullptr,movementTuning=nullptr,maxSpeedField=nullptr;
+    P ammoConfig=nullptr,ammoMag=nullptr,ammoReserve=nullptr,ammoSet=nullptr,liveAmmo=nullptr,showAmmo=nullptr,magField=nullptr,reserveField=nullptr;
     P nextSpread=nullptr,air=nullptr,fovGet=nullptr,fovSet=nullptr,unityAlive=nullptr,currentController=nullptr,equippedSkin=nullptr,displayName=nullptr;
     uint32_t fovOwner=0;float fovBefore=NAN,fovApplied=NAN;
-    float spreadBefore=NAN,spreadObserved=NAN,speedObserved=NAN;int spreadFields=0;
+    float spreadBefore=NAN,spreadObserved=NAN,speedObserved=NAN,horizontalObserved=NAN;int spreadFields=0;
     uint32_t spreadParameters=0;
     bool spreadVector=false;
     double spreadSampleAfter=0;int ammoObserved=-1,ammoMaximum=-1;
@@ -52,7 +55,7 @@ struct State : FlamePatch::Memory {
         EXTRA_LOAD(field,"class_get_field_from_name");EXTRA_LOAD(field_type,"field_get_type");EXTRA_LOAD(field_flags,"field_get_flags");
         EXTRA_LOAD(read,"field_get_value");EXTRA_LOAD(write,"field_set_value");EXTRA_LOAD(string_new,"string_new");
         EXTRA_LOAD(method_return_type,"method_get_return_type");
-        EXTRA_LOAD(object_new,"object_new");EXTRA_LOAD(object_get_class,"object_get_class");
+        EXTRA_LOAD(object_new,"object_new");EXTRA_LOAD(array_new,"array_new");EXTRA_LOAD(value_box,"value_box");
         EXTRA_LOAD(class_from_type,"class_from_type");EXTRA_LOAD(class_is_value,"class_is_valuetype");
 #undef EXTRA_LOAD
         dlclose(h);if(!field||!field_type||!field_flags||!read||!write||!string_new||!class_from_type||!class_is_value)return false;
@@ -71,6 +74,9 @@ struct State : FlamePatch::Memory {
         createWeapon=method(ac,"CreateWeapon",7,"WeaponParameters");setSkin=method(ac,"SetSkin",2,"System.String");
         if(!parametersMatch(createWeapon,{"WeaponParameters","System.String","StatTrak","System.Boolean","<reference>","System.Int32","System.Int32"}))createWeapon=nullptr;
         if(!parametersMatch(setSkin,{"System.String","StatTrak"}))setSkin=nullptr;
+        statTrakClass=cls("","StatTrak");
+        statTrakCtor=method(statTrakClass,".ctor",2,"System.Boolean");
+        if(!returns(statTrakCtor,"System.Void")||!parametersMatch(statTrakCtor,{"System.Boolean","System.Int32"}))statTrakCtor=nullptr;
         patches.bind(this);
         initExtended();
         ready=arms&&current&&isKnife&&recoil&&weaponId;return ready;
@@ -91,8 +97,16 @@ struct State : FlamePatch::Memory {
     }
     void initExtended(){
         using namespace Runtime;P pc=cls("","PlayerController"),ac=cls("","ArmsController"),am=cls("","Ammunition");
-        movement=method(pc,"get_MovementController",0);speedGet=method(cls("","PlayerMovement"),"get_Speed",0);
-        ammoCurrent=method(ac,"get_CurrentAmmunition",0);ammoConfig=method(parametersClass,"get_Ammunition",0);
+        P pm=cls("","PlayerMovement"),wc=cls("ScarletWork.Weapon","WeaponController");
+        movement=method(pc,"get_MovementController",0);
+        speedGet=method(pm,"get_MaxPlayerSpeed",0);horizontalGet=method(pm,"get_HorizontalSpeed",0);
+        speedField=typedField(pm,"_speed","System.Single");
+        movementTuning=typedField(pm,"_movement","SourceMovementTuning");
+        maxSpeedField=typedField(cls("","SourceMovementTuning"),"MaxSpeed","System.Single");
+        ammoConfig=method(parametersClass,"get_Ammunition",0);
+        liveAmmo=method(wc,"get_Ammunation",0);showAmmo=method(wc,"ShowAmmo",1,"System.Int32");
+        magField=typedField(ac,"MagazineCapacity","System.Int16");
+        reserveField=typedField(ac,"Capacity","System.Int16");
         ammoMag=method(am,"get_MagazineCapacity",0);ammoReserve=method(am,"get_Capacity",0);ammoSet=method(am,"Set",2,"System.Int32");
         if(!parametersMatch(ammoSet,{"System.Int32","System.Int32"}))ammoSet=nullptr;
         nextSpread=method(ac,"get_NextShotSpread",0);
@@ -154,20 +168,52 @@ struct State : FlamePatch::Memory {
         }
     }
     void speed(P pc,float factor,bool& ok){
-        using namespace Runtime;if(!movement||!speedGet)return;P controller=invoke(movement,pc,nullptr,ok);if(!controller)return;
-        P f=typedField(cls("","PlayerMovement"),"_speed","System.Single");
-        if(f)patches.scale(controller,f,std::clamp(factor,1.0f,3.0f),3);speedObserved=scalar(invoke(speedGet,controller,nullptr,ok));
+        using namespace Runtime;
+        if(!movement||!speedField||!movementTuning||!maxSpeedField||!returns(speedGet,"System.Single"))return;
+        P controller=invoke(movement,pc,nullptr,ok);
+        P tuning=controller?objectField(controller,movementTuning):nullptr;
+        if(!tuning||!ok)return;
+        factor=std::clamp(factor,1.0f,3.0f);
+        if(!patches.scale(controller,speedField,factor,3)||!patches.scale(tuning,maxSpeedField,factor,3)){
+            restoreSpeed();return;
+        }
+        speedObserved=scalar(invoke(speedGet,controller,nullptr,ok));
+        if(returns(horizontalGet,"System.Single"))horizontalObserved=scalar(invoke(horizontalGet,controller,nullptr,ok));
+    }
+    bool ammoCounts(P ac,int16_t& magazine,int16_t& reserve){
+        if(!magField||!reserveField)return false;
+        read(ac,magField,&magazine);read(ac,reserveField,&reserve);
+        return magazine>=0&&reserve>=0;
+    }
+    bool syncAmmo(P ac,P config,int16_t magazine,int16_t reserve,bool& ok){
+        using namespace Runtime;
+        if(!magField||!reserveField||!ammoSet||!returns(liveAmmo,"Ammunition"))return false;
+        P weapon=currentController?invoke(currentController,ac,nullptr,ok):nullptr;
+        P live=weapon?invoke(liveAmmo,weapon,nullptr,ok):nullptr;
+        if(!live||live==config||!ok)return false;
+        int mag=magazine,total=reserve;P args[]={&mag,&total};
+        invoke(ammoSet,live,args,ok);
+        if(!ok)return false;
+        write(ac,magField,&magazine);write(ac,reserveField,&reserve);
+        if(returns(showAmmo,"System.Void")){
+            bool modelOK=true;P displayArgs[]={&mag};invoke(showAmmo,weapon,displayArgs,modelOK);
+        }
+        return true;
     }
     void unlimitedAmmo(P ac,bool& ok){
-        using namespace Runtime;if(!ammoCurrent||!ammoConfig||!ammoSet||!ammoMag||!ammoReserve)return;
-        P p=invoke(current,ac,nullptr,ok);if(!p)return;
-        P config=invoke(ammoConfig,p,nullptr,ok),live=invoke(ammoCurrent,ac,nullptr,ok);
-        if(!config||!live||config==live){ammoObserved=-1;return;}
+        using namespace Runtime;
+        ammoObserved=-1;
+        if(!ammoConfig||!ammoMag||!ammoReserve)return;
+        P p=invoke(current,ac,nullptr,ok);
+        P config=p?invoke(ammoConfig,p,nullptr,ok):nullptr;
+        if(!config||!ok)return;
         int magazine=shortValue(invoke(ammoMag,config,nullptr,ok)),reserve=shortValue(invoke(ammoReserve,config,nullptr,ok));
-        int currentMag=shortValue(invoke(ammoMag,live,nullptr,ok)),currentReserve=shortValue(invoke(ammoReserve,live,nullptr,ok));
-        if(!ok||magazine<=0||magazine>1000||reserve<0||currentMag<0||currentReserve<0)return;
-        if(currentMag<magazine||currentReserve<reserve){int total=std::max(reserve,currentReserve);P args[]={&magazine,&total};invoke(ammoSet,live,args,ok);}
-        ammoObserved=shortValue(invoke(ammoMag,live,nullptr,ok));ammoMaximum=magazine;
+        int16_t currentMag=0,currentReserve=0;
+        if(!ok||magazine<=0||magazine>1000||reserve<0||!ammoCounts(ac,currentMag,currentReserve))return;
+        if(currentMag<magazine||currentReserve<reserve){
+            if(!syncAmmo(ac,config,std::max<int>(currentMag,magazine),std::max<int>(currentReserve,reserve),ok))return;
+        }
+        if(ammoCounts(ac,currentMag,currentReserve)){ammoObserved=currentMag;ammoMaximum=magazine;}
     }
     void fieldOfView(P camera,float value,bool& ok){
         using namespace Runtime;if(!fovGet||!fovSet||!alive(camera,ok))return;
@@ -209,13 +255,29 @@ struct State : FlamePatch::Memory {
         for(const SkinSave& save:skinHistory)if(save.weapon==observedWeapon)return;
         skinHistory.push_back({Runtime::gchandle_new(parameters,true),observedWeapon,observedSkin});
     }
+    P newStatTrak(bool& ok){
+        using namespace Runtime;
+        if(!statTrakCtor||!object_new)return nullptr;
+        P data=object_new(statTrakClass);
+        if(!data)return nullptr;
+        if(roots)roots->hold(data);
+        bool enabled=false;int kills=0;
+        P args[]={&enabled,&kills};invoke(statTrakCtor,data,args,ok);
+        return ok?data:nullptr;
+    }
+    void cancelCosmeticRetry(){
+        if(observedWeapon>=0)[desiredSkins removeObjectForKey:@(observedWeapon)];
+        desiredKnife=nil;expectedKnife=-1;expectedSkin=nil;
+    }
     void requestSkin(P ac,NSString* key,double now,bool& ok){
         using namespace Runtime;
         if(!setSkin){status=@"Метод применения материала недоступен";return;}
         P name=string_new(key.UTF8String);
         if(!name)return;
         if(roots)roots->hold(name);
-        P args[]={name,nullptr};
+        P stat=newStatTrak(ok);
+        if(!stat){status=@"Скин: не удалось создать настройки StatTrak";return;}
+        P args[]={name,stat};
         invoke(setSkin,ac,args,ok);
         if(ok){
             expectedSkin=key;skinWeapon=observedWeapon;verifySkinAfter=now+1;
@@ -241,59 +303,75 @@ struct State : FlamePatch::Memory {
         }
         status=@"Автоприменение материала выключено для текущего оружия";
     }
-    void sticker(P weapon,NSInteger kit,NSInteger slot,bool& ok){
+    void sticker(P weapon,NSInteger kit,NSInteger slot,P arrayGet,bool& ok){
         using namespace Runtime;
-        if(!weapon||kit<=0||slot<0||slot>4||!object_new||!object_get_class)return;
+        if(!weapon||kit<=0||kit>65535||slot<0||slot>4||!array_new||!value_box)return;
         P controller=cls("ScarletWork.Weapon","WeaponController");
-        P stickerData=cls("ScarletWork.Stickers","StickerData");
         P renderers=cls("ScarletWork.Stickers","StickerRenderers");
-        P show=method(controller,"ShowStickers",2);
-        P currentGet=method(renderers,"get_Stickers",0);
+        P codec=cls("ScarletWork.Stickers","StickerCodec");
+        P show=method(controller,"ShowStickers",2),getOld=method(renderers,"get_Stickers",0);
+        P encode=method(codec,"Encode",2,"System.Int32"),decode=method(codec,"TryDecode",3,"System.Byte[]");
+        P arraySet=method(cls("System","Array"),"SetValue",2,"System.Object"),byteClass=cls("System","Byte");
         P stickersField=typedField(controller,"_stickers","ScarletWork.Stickers.StickerRenderers");
-        if(!returns(show,"System.Void")||!currentGet||!stickersField||!stickerData){
-            status=@"Наклейки: игровой API не подтверждён";return;
+        if(!returns(show,"System.Void")||!parametersMatch(show,{"<reference>","System.Int32"})||
+            !getOld||!returns(encode,"System.Byte[]")||!returns(decode,"System.Boolean")||
+            !parametersMatch(arraySet,{"System.Object","System.Int32"})||!stickersField||!byteClass){
+            status=@"Наклейки: игровой кодек недоступен";return;
         }
-        P type=method_get_param(show,0);
-        char* name=type_get_name(type);
-        bool isList=name&&strstr(name,"System.Collections.Generic.List")&&strstr(name,"ScarletWork.Stickers.StickerData");
-        if(name)free_(name);
-        P listClass=isList&&parametersMatch(show,{"<reference>","System.Int32"})?class_from_type(type):nullptr;
-        P add=method(listClass,"Add",1),construct=method(listClass,".ctor",0),stickerConstruct=method(stickerData,".ctor",0);
-        P kitField=typedField(stickerData,"kit","System.Int32"),slotField=typedField(stickerData,"slot","System.Int32");
-        if(!returns(add,"System.Void")||class_from_type(method_get_param(add,0))!=stickerData||
-            !returns(construct,"System.Void")||!returns(stickerConstruct,"System.Void")||!kitField||!slotField){
-            status=@"Наклейки: коллекция игры недоступна";return;
-        }
-        P existing=objectField(weapon,stickersField);
-        P old=existing?invoke(currentGet,existing,nullptr,ok):nullptr;
-        P list=object_new(listClass),data=object_new(stickerData);
-        if(!list||!data||!ok)return;
-        if(roots){roots->hold(list);roots->hold(data);}
-        invoke(construct,list,nullptr,ok);
+        P outputType=method_get_param(decode,2);
+        char* typeName=type_get_name(outputType);
+        bool typed=typeName&&strstr(typeName,"System.Collections.Generic.List")&&
+            strstr(typeName,"ScarletWork.Stickers.StickerData")&&strchr(typeName,'&');
+        if(typeName)free_(typeName);
+        char* seedType=type_get_name(method_get_param(decode,1));
+        typed=typed&&seedType&&!strcmp(seedType,"System.Int32&");
+        if(seedType)free_(seedType);
+        if(!typed){status=@"Наклейки: сигнатура кодека не совпала";return;}
+        // StickerCodec.Write: ushort seed, byte count, then ten bytes per sticker.
+        std::array<uint8_t,53> payload{};
+        P active=objectField(weapon,stickersField);
+        P old=active?invoke(getOld,active,nullptr,ok):nullptr;
+        int seed=0,count=0;
         if(old){
-            P actual=object_get_class(old);
-            P countMethod=method(actual,"get_Count",0);
-            P getItem=method(actual,"get_Item",1,"System.Int32");
-            if(!returns(countMethod,"System.Int32")||!returns(getItem,"ScarletWork.Stickers.StickerData")){
-                status=@"Наклейки: не удалось прочитать текущие слоты";return;
+            P args[]={&seed,old};
+            P bytes=invoke(encode,nullptr,args,ok);
+            if(!bytes||!ok)return;
+            uintptr_t length=array_length(bytes);
+            if(length<3||length>payload.size())return;
+            for(int i=0;i<(int)length&&ok;i++){
+                P idx[]={&i};P item=invoke(arrayGet,bytes,idx,ok);
+                if(!item)return;
+                payload[i]=*static_cast<uint8_t*>(object_unbox(item));
             }
-            P countBox=invoke(countMethod,old,nullptr,ok);
-            int count=countBox?*static_cast<int*>(object_unbox(countBox)):-1;
-            if(count<0||count>12)return;
-            for(int i=0;i<count&&ok;i++){
-                P idx[]={&i};P item=invoke(getItem,old,idx,ok);
-                if(!item)continue;
-                int oldSlot=-1;read(item,slotField,&oldSlot);
-                if(oldSlot!=slot){P args[]={item};invoke(add,list,args,ok);}
-            }
+            if(!ok||payload[2]>5||length!=3u+10u*payload[2])return;
+            count=payload[2];
         }
-        invoke(stickerConstruct,data,nullptr,ok);
-        if(!ok)return;
-        int kitValue=(int)kit,slotValue=(int)slot,mip=0;
-        write(data,kitField,&kitValue);write(data,slotField,&slotValue);
-        P newArgs[]={data};invoke(add,list,newArgs,ok);
-        P args[]={list,&mip};invoke(show,weapon,args,ok);
-        if(ok)status=[NSString stringWithFormat:@"Наклейка запрошена для слота %ld",(long)slot+1];
+        int index=0;
+        while(index<count&&payload[3+10*index]!=slot)++index;
+        if(index==count&&count==5){status=@"Все пять слотов заняты";return;}
+        if(index==count)payload[2]=++count;
+        uint8_t* record=payload.data()+3+10*index;
+        memset(record,0,10);
+        record[0]=(uint8_t)slot;record[1]=(uint8_t)kit;record[2]=(uint8_t)(kit>>8);
+        int length=3+10*count;
+        P bytes=array_new(byteClass,length);
+        if(!bytes)return;
+        if(roots)roots->hold(bytes);
+        for(int i=0;i<length&&ok;i++){
+            P box=value_box(byteClass,&payload[i]);
+            if(!box)return;
+            if(roots)roots->hold(box);
+            P args[]={box,&i};invoke(arraySet,bytes,args,ok);
+        }
+        P list=nullptr;
+        P args[]={bytes,&seed,&list};
+        P decoded=invoke(decode,nullptr,args,ok);
+        if(!decoded||!*static_cast<bool*>(object_unbox(decoded))||!list){
+            status=@"Игра не прочитала данные наклейки";return;
+        }
+        if(roots)roots->hold(list);
+        int mip=1;P apply[]={list,&mip};invoke(show,weapon,apply,ok);
+        if(ok)status=[NSString stringWithFormat:@"Игра приняла наклейку для слота %ld",(long)slot+1];
     }
     bool cosmetics(P ac,NSDictionary* request,P arrayGet,double now,bool& ok){
         using namespace Runtime;
@@ -313,9 +391,10 @@ struct State : FlamePatch::Memory {
             if(held!=observedWeapon&&expectedKnife<0){attemptedKnife=-1;knifeMaterialTried=false;}
         }
         observedWeapon=held;
-        if(newWeapon&&displayName)observedName=text(invoke(displayName,p,nullptr,ok));
-        observedSkin=equippedSkin?text(invoke(equippedSkin,weapon,nullptr,ok)):@"";
-        if(!ok)return false;
+        bool nameOK=true,skinReadOK=true;
+        if(newWeapon&&displayName)observedName=text(invoke(displayName,p,nullptr,nameOK));
+        observedSkin=equippedSkin?text(invoke(equippedSkin,weapon,nullptr,skinReadOK)):@"";
+        Runtime::lastException=nil;
         if(!desiredSkins)desiredSkins=[NSMutableDictionary dictionary];
 
         NSString* action=request[@"action"];
@@ -325,7 +404,7 @@ struct State : FlamePatch::Memory {
         if([action isEqual:@"sticker"]){
             P knife=invoke(isKnife,ac,nullptr,ok);
             if(!knife||*static_cast<bool*>(object_unbox(knife)))status=@"Выбери огнестрельное оружие";
-            else sticker(weapon,[request[@"skin"][@"id"] integerValue],[request[@"skin"][@"slot"] integerValue],ok);
+            else sticker(weapon,[request[@"skin"][@"id"] integerValue],[request[@"skin"][@"slot"] integerValue],arrayGet,ok);
             return true;
         }
 
@@ -421,7 +500,7 @@ struct State : FlamePatch::Memory {
         if(spreadFields&&std::isfinite(spreadObserved)){
             [parts addObject:[NSString stringWithFormat:@"Spread %.4f → %.4f (%d)",spreadBefore,spreadObserved,spreadFields]];
         }else if(spreadFields)[parts addObject:[NSString stringWithFormat:@"Spread: %d полей, без показания движка",spreadFields]];
-        if(std::isfinite(speedObserved))[parts addObject:[NSString stringWithFormat:@"Speed %.2f",speedObserved]];
+        if(std::isfinite(speedObserved))[parts addObject:[NSString stringWithFormat:@"Speed %.2f · лимит %.2f",horizontalObserved,speedObserved]];
         if(ammoObserved>=0)[parts addObject:[NSString stringWithFormat:@"Ammo %d/%d",ammoObserved,ammoMaximum]];
         return [parts componentsJoinedByString:@"  ·  "];
     }
@@ -458,10 +537,10 @@ struct State : FlamePatch::Memory {
         spreadParameters=0;spreadBefore=spreadObserved=NAN;spreadFields=0;spreadSampleAfter=0;
     }
     void restoreSpread(){if(ready)patches.restore(2);clearSpreadSample();}
-    void restoreSpeed(){if(ready)patches.restore(3);speedObserved=NAN;}
+    void restoreSpeed(){if(ready)patches.restore(3);speedObserved=horizontalObserved=NAN;}
     void restorePlayer(){
         if(ready)patches.restore();
-        clearSpreadSample();speedObserved=NAN;ammoObserved=-1;ammoMaximum=-1;
+        clearSpreadSample();speedObserved=horizontalObserved=NAN;ammoObserved=-1;ammoMaximum=-1;
     }
     void noRecoil(P ac,bool& ok){
         using namespace Runtime;P knife=invoke(isKnife,ac,nullptr,ok);if(!knife||*static_cast<bool*>(object_unbox(knife)))return;
@@ -481,21 +560,6 @@ struct State : FlamePatch::Memory {
         return value&&*static_cast<bool*>(Runtime::object_unbox(value));
     }
     static float angle(float value){value=fmodf(value+180,360);if(value<0)value+=360;return value-180;}
-    void spin(P player,float degrees,bool& ok){
-        using namespace Runtime;
-        if(!lock||!playerBody||!goTransform||!euler||!setEuler)return;
-        P owner=invoke(lock,player,nullptr,ok);
-        P body=owner?objectField(owner,playerBody):nullptr;
-        P transform=body?invoke(goTransform,body,nullptr,ok):nullptr;
-        if(!transform)return;
-        P box=invoke(euler,transform,nullptr,ok);
-        if(!box||!ok)return;
-        V3 angles{};
-        memcpy(&angles,object_unbox(box),sizeof(angles));
-        if(!finiteV3(angles))return;
-        angles.y=angle(angles.y+degrees);
-        P args[]={&angles};invoke(setEuler,transform,args,ok);
-    }
     void nextAgent(P skeleton,P arrayGet,bool& ok){
         using namespace Runtime;
         P type=cls("ScarletWork.Game","AgentDefinition"),skeletonClass=cls("ScarletWork.Game","PlayerSkeleton");
@@ -555,18 +619,22 @@ struct State : FlamePatch::Memory {
         using namespace Runtime;
         P material=skin.length?string_new(skin.UTF8String):nullptr;
         if(material&&roots)roots->hold(material);
+        P stat=newStatTrak(ok);
+        if(!stat){ok=false;status=@"Нож: не удалось создать настройки StatTrak";return;}
         bool pickup=false;int seed=0,owner=0;
-        P args[]={parameters,material,nullptr,&pickup,nullptr,&seed,&owner};
+        P args[]={parameters,material,stat,&pickup,nullptr,&seed,&owner};
         invoke(createWeapon,ac,args,ok);
     }
     void equipPreservingAmmo(P ac,P parameters,bool& ok){
-        using namespace Runtime;int magazine=-1,reserve=-1;
-        P before=invoke(current,ac,nullptr,ok),config=before&&ammoConfig?invoke(ammoConfig,before,nullptr,ok):nullptr;
-        P live=ammoCurrent?invoke(ammoCurrent,ac,nullptr,ok):nullptr;
-        if(live&&config&&live!=config&&ammoMag&&ammoReserve){magazine=shortValue(invoke(ammoMag,live,nullptr,ok));reserve=shortValue(invoke(ammoReserve,live,nullptr,ok));}
+        using namespace Runtime;
+        int16_t magazine=0,reserve=0;
+        bool hasAmmo=ammoCounts(ac,magazine,reserve);
         equip(ac,parameters,ok);
-        if(ok&&magazine>=0&&reserve>=0&&ammoCurrent&&ammoSet){P after=invoke(ammoCurrent,ac,nullptr,ok),base=ammoConfig?invoke(ammoConfig,parameters,nullptr,ok):nullptr;
-            if(after&&base&&after!=base){P args[]={&magazine,&reserve};invoke(ammoSet,after,args,ok);}}
+        if(ok&&hasAmmo&&ammoConfig){
+            P config=invoke(ammoConfig,parameters,nullptr,ok);
+            if(config)syncAmmo(ac,config,magazine,reserve,ok);
+        }
     }
+
 };
 }

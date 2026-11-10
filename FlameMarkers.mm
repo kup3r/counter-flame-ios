@@ -39,6 +39,8 @@ struct Roots {
     ~Roots() { for(uint32_t h:handles) gchandle_free(h); }
 };
 static thread_local Roots* roots=nullptr;
+static NSString* lastException=nil;
+void (*format_exception)(P,char*,int)=nullptr;
 struct RootScope {
     Roots owned; Roots* previous;
     RootScope():previous(roots) { roots=&owned; }
@@ -60,6 +62,7 @@ bool load() {
     LOAD(gchandle_new,"gchandle_new"); LOAD(gchandle_free,"gchandle_free");
     LOAD(thread_current,"thread_current"); LOAD(gchandle_get_target,"gchandle_get_target");
     LOAD(string_length,"string_length"); LOAD(string_chars,"string_chars");
+    format_exception=reinterpret_cast<decltype(format_exception)>(dlsym(h,"il2cpp_format_exception"));
 #undef LOAD
     dlclose(h); return ok;
 }
@@ -87,7 +90,14 @@ P invoke(P m,P self,P* args,bool& ok) {
     if(!ok) return nullptr;
     if(!m){ok=false;return nullptr;}
     P exception=nullptr; P result=runtime_invoke(m,self,args,&exception);
-    if(exception) { ok=false; NSLog(@"[Flame v9] Managed exception in %s",method_get_name(m)); }
+    if(exception){
+        ok=false;
+        char details[192]{};
+        if(format_exception)format_exception(exception,details,sizeof(details)-1);
+        NSString* reason=details[0]?[NSString stringWithUTF8String:details]:nil;
+        lastException=[NSString stringWithFormat:@"%s: %@",method_get_name(m),reason?:@"исключение Unity"];
+        NSLog(@"[Flame v10] %@",lastException);
+    }
     if(result && !exception && roots) roots->hold(result);
     return exception?nullptr:result;
 }
@@ -157,7 +167,7 @@ struct Api {
     size_t _rigs,_boneCount,_missingRig;
     Extra::State _extras;BOOL _aim,_noRecoil;uint32_t _controls;float _aimRadius;
     UILabel* _extraLabel;
-    uint32_t _activeLocal;BOOL _cosmeticsFault,_aimFault;NSTimeInterval _nextPlayerProbe,_retryAfter;
+    uint32_t _activeLocal;BOOL _aimFault;NSTimeInterval _nextPlayerProbe,_retryAfter;
     FlameMenu* _menu;NSDictionary* _skinRequest;
     BOOL _noSpread,_speedHack,_unlimitedAmmo,_fovOverride,_crosshair,_corners,_filled,_headCircle,_showFps;
     float _speedFactor,_fovValue,_maxDistance,_lineWidth,_aimSmoothing;
@@ -184,7 +194,7 @@ struct Api {
     if((self=[super initWithFrame:frame])){
         self.backgroundColor=UIColor.clearColor;self.userInteractionEnabled=YES;
         self.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight;
-        _sceneHandle=-1;_status=@"Flame v9: ESP off";_aimRadius=100;_aimSmoothing=10;_aimMaxTurn=180;_aimRing=YES;_trailTime=2;_cameraDistance=3;_spinSpeed=180;_triggerDelay=80;_skyHue=210;_sceneHour=14;_playerHue=180;
+        _sceneHandle=-1;_status=@"Flame v10: ESP off";_aimRadius=100;_aimSmoothing=10;_aimMaxTurn=180;_aimRing=YES;_trailTime=2;_cameraDistance=3;_spinSpeed=180;_triggerDelay=80;_skyHue=210;_sceneHour=14;_playerHue=180;
         _speedFactor=1.5;_fovValue=90;_lineWidth=1.2;_corners=YES;_showFps=YES;
         _onlyEnemies=YES;_showBoxes=YES;_showSkeleton=YES;_showHealth=YES;_showDistance=YES;
         CGFloat width=fmin(740,frame.size.width-42),height=fmin(355,frame.size.height-30);
@@ -230,7 +240,7 @@ struct Api {
 - (void)flameSkinAction:(NSString*)action weapon:(NSDictionary*)weapon skin:(NSDictionary*)skin {
     if(!_enabled){_extraLabel.text=@"Включи модуль после загрузки матча";return;}
     if(!weapon&&![action isEqual:@"restoreSkin"]&&![action isEqual:@"restoreModel"]&&![action isEqual:@"sticker"])return;
-    _cosmeticsFault=NO;_skinRequest=@{@"action":action,@"weapon":weapon?:@{},@"skin":skin?:@{}};_extras.status=@"Проверка текущего оружия и выбранной конфигурации…";_extraLabel.text=_extras.status;
+    _skinRequest=@{@"action":action,@"weapon":weapon?:@{},@"skin":skin?:@{}};_extras.status=@"Проверка текущего оружия и выбранной конфигурации…";_extraLabel.text=_extras.status;
 }
 - (void)applyPreferences:(NSDictionary*)input {
     [self flameSetOption:Master value:NO];
@@ -261,20 +271,20 @@ struct Api {
 }
 - (void)clearDrawing {_items.clear();_segments.clear();_tracers.clear();_dots.clear();_headMarkers.clear();_trailSegments.clear();}
 - (void)didMoveToWindow {
-    [super didMoveToWindow];[_gesture.view removeGestureRecognizer:_gesture];if(self.window)[self.window addGestureRecognizer:_gesture];else [self pause:@"Flame v9: paused"];
+    [super didMoveToWindow];[_gesture.view removeGestureRecognizer:_gesture];if(self.window)[self.window addGestureRecognizer:_gesture];else [self pause:@"Flame v10: paused"];
 }
 - (BOOL)gestureRecognizer:(UIGestureRecognizer*)a shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer*)b{return YES;}
 - (UIView*)hitTest:(CGPoint)p withEvent:(UIEvent*)e {UIView* hit=[super hitTest:p withEvent:e];return !_panel.hidden&&[hit isDescendantOfView:_panel]?hit:nil;}
 - (void)toggleMenu {_panel.hidden=!_panel.hidden;}
 - (void)resetLocalState {
-    _extras.restorePlayer();_extras.resetCosmetics();_sceneVisuals.restorePlayer(_extras);_input.clear();_thirdView.clear(_extras);
+    _extras.restorePlayer();_extras.resetCosmetics();_sceneVisuals.restorePlayer(_extras);_sceneVisuals.restoreSpin(_extras);_input.clear();_thirdView.clear(_extras);
     if(_activeLocal){Runtime::gchandle_free(_activeLocal);_activeLocal=0;}
-    _fireStarted=0;_observeAfter=0;_cosmeticsFault=_aimFault=NO;_trailPoints.clear();
+    _fireStarted=0;_observeAfter=0;_aimFault=NO;_trailPoints.clear();
     [_menu updateWeapon:-1 name:@"" skin:@""];
 }
 - (void)optionChanged:(UISwitch*)s {
     switch(s.tag){
-        case Master:_extras.status=s.on?@"Включение после проверки сцены":@"Модуль выключен; параметры восстановлены";_extraLabel.text=_extras.status;_extras.restoreFov();_extras.restorePlayer();_sceneVisuals.clear(_extras,true);_input.clear();_thirdView.clear(_extras);_nextAgent=NO;_trailPoints.clear();_cosmeticsFault=_aimFault=NO;_fireStarted=0;_skinRequest=nil;[self clearTargets];[self clearDrawing];_enabled=s.on;_sceneHandle=-1;_retryAfter=0;_settledAfter=NSProcessInfo.processInfo.systemUptime+5;_fpsStart=0;_frames=0;_displayLink.paused=!_enabled;_status=_enabled?@"Flame v9: waiting for scene":@"Flame v9: ESP off";break;
+        case Master:_extras.status=s.on?@"Включение после проверки сцены":@"Модуль выключен; параметры восстановлены";_extraLabel.text=_extras.status;_extras.restoreFov();_extras.restorePlayer();_sceneVisuals.clear(_extras,true);_input.clear();_thirdView.clear(_extras);_nextAgent=NO;_trailPoints.clear();_aimFault=NO;_fireStarted=0;_skinRequest=nil;[self clearTargets];[self clearDrawing];_enabled=s.on;_sceneHandle=-1;_retryAfter=0;_settledAfter=NSProcessInfo.processInfo.systemUptime+5;_fpsStart=0;_frames=0;_displayLink.paused=!_enabled;_status=_enabled?@"Flame v10: waiting for scene":@"Flame v10: ESP off";break;
         case Enemies:_onlyEnemies=s.on;break;case Boxes:_showBoxes=s.on;break;case Skeleton:_showSkeleton=s.on;break;
         case Health:_showHealth=s.on;break;case Names:_showNames=s.on;break;case Distance:_showDistance=s.on;break;case Tracers:_showTracers=s.on;break;case Debug:_debug=s.on;break;
         case Aim:_aim=s.on;_aimFault=NO;_fireStarted=0;_nextDiscovery=0;break;
@@ -296,7 +306,7 @@ struct Api {
         case CenterDot:_centerDot=s.on;break;
         case Trail:_trail=s.on;if(!_trail)_trailPoints.clear();break;
         case ThirdPerson:_thirdPerson=s.on;_thirdView.fault=false;if(!_thirdPerson)_thirdView.clear(_extras);break;
-        case Spin:_spin=s.on;break;
+        case Spin:_spin=s.on;if(!_spin)_sceneVisuals.restoreSpin(_extras);break;
         case Trigger:_trigger=s.on;_input.resetTrigger();break;
         case BunnyHop:_bunnyHop=s.on;if(!_bunnyHop)_input.clear();break;
         case SkyTint:_skyTint=s.on;break;case SceneLight:_sceneLight=s.on;break;case PlayerTint:_playerTint=s.on;break;
@@ -373,20 +383,20 @@ struct Api {
 }
 - (void)sample {
     using namespace Runtime;[self clearDrawing];if(!_enabled)return;
-    if(UIApplication.sharedApplication.applicationState!=UIApplicationStateActive||!self.window){[self pause:@"Flame v9: paused in background"];return;}
-    if(!_ready)_ready=load();if(!_ready){_status=@"Flame v9: waiting for runtime";[self setNeedsDisplay];return;}
-    if(!NSThread.isMainThread||!thread_current()){[self pause:@"Flame v9: runtime thread unavailable"];return;}
-    if(!_apiReady)_apiReady=_api.init();if(!_apiReady){[self pause:@"Flame v9: required methods unavailable"];return;}
+    if(UIApplication.sharedApplication.applicationState!=UIApplicationStateActive||!self.window){[self pause:@"Flame v10: paused in background"];return;}
+    if(!_ready)_ready=load();if(!_ready){_status=@"Flame v10: waiting for runtime";[self setNeedsDisplay];return;}
+    if(!NSThread.isMainThread||!thread_current()){[self pause:@"Flame v10: runtime thread unavailable"];return;}
+    if(!_apiReady)_apiReady=_api.init();if(!_apiReady){[self pause:@"Flame v10: required methods unavailable"];return;}
     RootScope frameRoots;bool ok=true;
     P scene=invoke(_api.active,nullptr,nullptr,ok),raw=scene?object_unbox(scene):nullptr;
-    if(!raw){[self pause:@"Flame v9: no scene"];return;}
+    if(!raw){[self pause:@"Flame v10: no scene"];return;}
     P loaded=invoke(_api.loaded,raw,nullptr,ok),handle=invoke(_api.handle,raw,nullptr,ok);
-    if(!ok||!loaded||!handle){[self pause:@"Flame v9: scene check failed"];return;}
+    if(!ok||!loaded||!handle){[self pause:@"Flame v10: scene check failed"];return;}
     int current=[self integer:handle];NSTimeInterval now=NSProcessInfo.processInfo.systemUptime;
     if(!_fpsStart){_fpsStart=now;_frames=0;}_frames++;if(now-_fpsStart>=.5){_observedFPS=_frames/(now-_fpsStart);_frames=0;_fpsStart=now;}
-    if(!*static_cast<bool*>(object_unbox(loaded))||(_sceneHandle!=-1&&current!=_sceneHandle)){[self pause:@"Flame v9: scene changed; enable after loading"];return;}
+    if(!*static_cast<bool*>(object_unbox(loaded))||(_sceneHandle!=-1&&current!=_sceneHandle)){[self pause:@"Flame v10: scene changed; enable after loading"];return;}
     if(_sceneHandle==-1){_sceneHandle=current;_settledAfter=now+5;}
-    if(now<_settledAfter){_status=@"Flame v9: waiting for scene";[self setNeedsDisplay];return;}
+    if(now<_settledAfter){_status=@"Flame v10: waiting for scene";[self setNeedsDisplay];return;}
     if(now<_retryAfter)return;
     if(!_extras.ready){if(!_extras.init())_extras.status=@"Экспериментальные API недоступны";}
     if(now>=_nextDiscovery){[self discover:ok];_nextDiscovery=now+0.5;if(!ok){[self waitForPlayers:@"Ожидание объектов матча" now:now];return;}}
@@ -466,7 +476,7 @@ struct Api {
                 if(_api.bodyLod)lod=invoke(_api.bodyLod,skeleton,nullptr,renderOK);
             }
         }
-        _sceneVisuals.tick(_extras,now,_skyTint,_skyHue,_sceneLight,_sceneHour,_playerTint,_playerHue,body,lod);
+        _sceneVisuals.tick(_extras,now,_skyTint,_skyHue,_sceneLight,_sceneHour,_playerTint,_playerHue,body,lod,viewCamera);
     }
     BOOL fireHeld=NO;
     if(_extras.ready&&localController){
@@ -494,17 +504,19 @@ struct Api {
                 bool stepOK=true;_extras.unlimitedAmmo(ac,stepOK);
                 if(!stepOK)_extras.ammoObserved=-1;
             }
-            if(!_cosmeticsFault&&now>=_observeAfter){
+            if(now>=_observeAfter){
+                Runtime::lastException=nil;
                 bool skinOK=true;
                 bool handled=_extras.cosmetics(ac,_skinRequest,_api.get,now,skinOK);
                 if(!skinOK){
-                    _cosmeticsFault=YES;_skinRequest=nil;
-                    _extras.status=@"Скинченджер остановлен для этого персонажа после ошибки игры";
+                    if(![_skinRequest[@"action"] isEqual:@"sticker"])_extras.cancelCosmeticRetry();
+                    _skinRequest=nil;
+                    _extras.status=Runtime::lastException?:@"Игра отклонила операцию с внешним видом";
                 }else if(handled)_skinRequest=nil;
                 _observeAfter=now+.25;
                 [_menu updateWeapon:_extras.observedWeapon name:_extras.observedName skin:_extras.observedSkin];
             }
-            if(_trigger&&!_spin&&viewCamera==camera&&_panel.hidden&&haveCameraPos&&anchorTeam.length){
+            if(_trigger&&viewCamera==camera&&_panel.hidden&&haveCameraPos&&anchorTeam.length){
                 int hit=_input.actor(_extras,_sceneVisuals,ac,cameraTransform,cameraPos,now);
                 if(hit!=-2){
                     bool enemy=false;
@@ -524,7 +536,7 @@ struct Api {
                     else _input.resetTrigger();
                 }
             }else _input.resetTrigger();
-            if(_aim&&!_spin&&viewCamera==camera&&!_aimFault&&_controls&&_panel.hidden){
+            if(_aim&&viewCamera==camera&&!_aimFault&&_controls&&_panel.hidden){
                 bool inputOK=true;P c=gchandle_get_target(_controls);
                 if([self isAlive:c ok:inputOK])fireHeld=_extras.fireHeld(c,inputOK);
             }
@@ -537,10 +549,11 @@ struct Api {
 
     if(_extras.ready&&_spin&&localController&&_panel.hidden){
         bool spinOK=true;
+        P animator=invoke(_api.animator,localController,nullptr,spinOK);
+        P skeleton=[self isAlive:animator ok:spinOK]?invoke(_api.skeleton,animator,nullptr,spinOK):nullptr;
         float dt=fmax(.001,fmin(.05,_displayLink.targetTimestamp-_displayLink.timestamp));
-        _extras.spin(localController,_spinSpeed*dt,spinOK);
-        if(!spinOK){_spin=NO;[_menu setRuntimeOption:Spin value:NO];}
-    }
+        if([self isAlive:skeleton ok:spinOK])_sceneVisuals.spin(_extras,skeleton,camera,_spinSpeed*dt);
+    }else if(_sceneVisuals.spinOwner)_sceneVisuals.restoreSpin(_extras);
     if(_trail){
         bool trailOK=true,previousVisible=false;CGPoint previous{};
         for(const TrailPoint& sample:_trailPoints){
@@ -626,7 +639,7 @@ struct Api {
     if(_noSpread&&localController&&!_extras.spreadFields)
         diagnostics=[diagnostics stringByAppendingString:@"  No Spread: нет подтверждённых изменений"];
     _extraLabel.text=[NSString stringWithFormat:@"%@\n%@",_extras.status,diagnostics];
-    _status=[NSString stringWithFormat:@"v9: %zu players · %@ team %@\nrigs %zu/%zu · bones %zu · missing %zu\nallies filtered %zu · unknown teams %zu",visible,watching?@"watched":@"local",anchorTeam.length?anchorTeam:@"unknown",_rigs,_targets.size(),_boneCount,_missingRig,filtered,unknown];
+    _status=[NSString stringWithFormat:@"v10: %zu players · %@ team %@\nrigs %zu/%zu · bones %zu · missing %zu\nallies filtered %zu · unknown teams %zu",visible,watching?@"watched":@"local",anchorTeam.length?anchorTeam:@"unknown",_rigs,_targets.size(),_boneCount,_missingRig,filtered,unknown];
     [self setNeedsDisplay];
 }
 - (UIColor*)color:(BOOL)enemy{return enemy?FlameAccent(_accent):[UIColor colorWithRed:0.35 green:1 blue:0.45 alpha:1];}
