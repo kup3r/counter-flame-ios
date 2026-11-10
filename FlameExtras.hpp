@@ -37,6 +37,8 @@ struct State : FlamePatch::Memory {
     bool knifeMaterialFallback=false,knifeMaterialTried=false;
     P movement=nullptr,speedGet=nullptr,horizontalGet=nullptr,speedField=nullptr,movementTuning=nullptr,maxSpeedField=nullptr;
     P ammoConfig=nullptr,ammoMag=nullptr,ammoReserve=nullptr,ammoSet=nullptr,liveAmmo=nullptr,showAmmo=nullptr,magField=nullptr,reserveField=nullptr;
+    P ammoHudClass=nullptr,ammoHudFind=nullptr,ammoHudUpdate=nullptr;
+    uint32_t ammoHudOwner=0;double ammoHudRetry=0;
     P nextSpread=nullptr,air=nullptr,fovGet=nullptr,fovSet=nullptr,unityAlive=nullptr,currentController=nullptr,equippedSkin=nullptr,displayName=nullptr;
     uint32_t fovOwner=0;float fovBefore=NAN,fovApplied=NAN;
     float spreadBefore=NAN,spreadObserved=NAN,speedObserved=NAN,horizontalObserved=NAN;int spreadFields=0;
@@ -107,6 +109,10 @@ struct State : FlamePatch::Memory {
         liveAmmo=method(wc,"get_Ammunation",0);showAmmo=method(wc,"ShowAmmo",1,"System.Int32");
         magField=typedField(ac,"MagazineCapacity","System.Int16");
         reserveField=typedField(ac,"Capacity","System.Int16");
+        ammoHudClass=cls("ScarletWork.Game.UI","PlayerBar");
+        ammoHudFind=method(cls("UnityEngine","Object"),"FindObjectOfType",1,"System.Type");
+        ammoHudUpdate=method(ammoHudClass,"ChangeAmmo",2,"System.Int32");
+        if(!returns(ammoHudUpdate,"System.Void")||!parametersMatch(ammoHudUpdate,{"System.Int32","System.Int32"}))ammoHudUpdate=nullptr;
         ammoMag=method(am,"get_MagazineCapacity",0);ammoReserve=method(am,"get_Capacity",0);ammoSet=method(am,"Set",2,"System.Int32");
         if(!parametersMatch(ammoSet,{"System.Int32","System.Int32"}))ammoSet=nullptr;
         nextSpread=method(ac,"get_NextShotSpread",0);
@@ -185,6 +191,25 @@ struct State : FlamePatch::Memory {
         read(ac,magField,&magazine);read(ac,reserveField,&reserve);
         return magazine>=0&&reserve>=0;
     }
+    void refreshAmmoHud(int magazine,int reserve){
+        using namespace Runtime;
+        if(!ammoHudUpdate||!ammoHudFind||!ammoHudClass)return;
+        bool ok=true;
+        P hud=ammoHudOwner?gchandle_get_target(ammoHudOwner):nullptr;
+        if(!alive(hud,ok)){
+            if(ammoHudOwner)gchandle_free(ammoHudOwner);
+            ammoHudOwner=0;
+            double now=NSProcessInfo.processInfo.systemUptime;
+            if(!ok||now<ammoHudRetry)return;
+            ammoHudRetry=now+1;
+            P type=type_get_object(class_get_type(ammoHudClass));
+            if(type&&roots)roots->hold(type);
+            P findArgs[]={type};hud=type?invoke(ammoHudFind,nullptr,findArgs,ok):nullptr;
+            if(!alive(hud,ok))return;
+            ammoHudOwner=gchandle_new(hud,true);
+        }
+        P args[]={&magazine,&reserve};invoke(ammoHudUpdate,hud,args,ok);
+    }
     bool syncAmmo(P ac,P config,int16_t magazine,int16_t reserve,bool& ok){
         using namespace Runtime;
         if(!magField||!reserveField||!ammoSet||!returns(liveAmmo,"Ammunition"))return false;
@@ -198,6 +223,7 @@ struct State : FlamePatch::Memory {
         if(returns(showAmmo,"System.Void")){
             bool modelOK=true;P displayArgs[]={&mag};invoke(showAmmo,weapon,displayArgs,modelOK);
         }
+        refreshAmmoHud(mag,total);
         return true;
     }
     void unlimitedAmmo(P ac,bool& ok){
@@ -541,6 +567,8 @@ struct State : FlamePatch::Memory {
     void restorePlayer(){
         if(ready)patches.restore();
         clearSpreadSample();speedObserved=horizontalObserved=NAN;ammoObserved=-1;ammoMaximum=-1;
+        if(ammoHudOwner){Runtime::gchandle_free(ammoHudOwner);ammoHudOwner=0;}
+        ammoHudRetry=0;
     }
     void noRecoil(P ac,bool& ok){
         using namespace Runtime;P knife=invoke(isKnife,ac,nullptr,ok);if(!knife||*static_cast<bool*>(object_unbox(knife)))return;

@@ -190,7 +190,7 @@ struct State {
         }
         gchandle_free(gradeOwner);gradeOwner=0;
     }
-    bool light(Extra::State& extra,float hour){
+    bool light(Extra::State& extra,float hour,float tintHue){
         using namespace Runtime;
         if(!staticRead||!gradeActive||!gradeExposure||!gradeShadow||!gradeHighlight||!gradeApply)return false;
         P grade=nullptr;staticRead(gradeActive,&grade);
@@ -213,6 +213,12 @@ struct State {
         exposureApplied=std::clamp(exposureBefore*(.48f+.67f*daylight+.18f*twilight),.2f,3.f);
         shadowApplied={.44f+.56f*daylight,.63f+.37f*daylight,1.f,shadowBefore.a};
         highlightApplied={.72f+.28f*daylight+.28f*twilight,.76f+.24f*daylight-.20f*twilight,1.f-.52f*twilight,highlightBefore.a};
+        if(tintHue<360.f){
+            Color custom=hue(tintHue,.66f);
+            shadowApplied={shadowApplied.r*custom.r,shadowApplied.g*custom.g,shadowApplied.b*custom.b,shadowBefore.a};
+            highlightApplied={highlightApplied.r*(.5f+.5f*custom.r),highlightApplied.g*(.5f+.5f*custom.g),
+                highlightApplied.b*(.5f+.5f*custom.b),highlightBefore.a};
+        }
         if(fabsf(exposure-exposureApplied)>.001f||!shadow.same(shadowApplied)||!highlight.same(highlightApplied)){
             extra.write(grade,gradeExposure,&exposureApplied);
             extra.write(grade,gradeShadow,&shadowApplied);
@@ -263,7 +269,7 @@ struct State {
         restoreTint(extra,body,sameScene);restoreTint(extra,lod,sameScene);
         restoreLight(extra,sameScene);nextTick=0;status=@"";
     }
-    void tick(Extra::State& extra,double now,bool changeSky,float skyHue,bool changeLight,float hour,
+    void tick(Extra::State& extra,double now,bool changeSky,float skyHue,bool changeLight,float hour,float tintHue,
               bool changePlayer,float playerHue,P bodyRenderer,P lodRenderer,P camera){
         using namespace Runtime;
         if(now<nextTick)return;
@@ -272,7 +278,7 @@ struct State {
         NSMutableArray* states=[NSMutableArray array];
         if(changeSky)[states addObject:this->changeSky(extra,camera,hue(skyHue,.63f))];
         else {restoreTint(extra,sky,true);restoreBackground(extra,true);}
-        if(changeLight)[states addObject:light(extra,hour)?@"свет":@"свет: API недоступен"];
+        if(changeLight)[states addObject:light(extra,hour,tintHue)?@"свет":@"свет: API недоступен"];
         else restoreLight(extra,true);
         if(changePlayer){
             bool ok=true,lodOK=true;

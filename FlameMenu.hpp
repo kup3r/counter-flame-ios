@@ -146,6 +146,7 @@ static UIColor* FlameAccent(NSInteger index){switch(index){case 1:return [UIColo
     [self slider:@"skyHue" title:@"Оттенок неба (°)" min:0 max:359 x:col+20 y:518 width:col parent:p];
     [self option:SceneLight title:@"Время суток · свет" x:col+20 y:572 width:col parent:p];
     [self slider:@"sceneHour" title:@"Время суток (ч)" min:0 max:24 x:col+20 y:605 width:col parent:p];
+    [self slider:@"sceneHue" title:@"Цвет света · 360 = авто" min:0 max:360 x:col+20 y:662 width:col parent:p];
     [self section:@"Персонаж" x:0 y:552 width:col parent:p];
     [self option:PlayerTint title:@"Окрас персонажа" x:0 y:580 width:col parent:p];
     [self slider:@"playerHue" title:@"Оттенок · 360 = RGB" min:0 max:360 x:0 y:617 width:col parent:p];

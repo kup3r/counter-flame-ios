@@ -52,7 +52,8 @@ struct State {
             !positionSet||!eulerSet||!eulerGet||!forward||!depthGet||!depthSet||!clearFlags||!linecast)return nullptr;
         if(source&&gchandle_get_target(source)!=camera)clear(extra);
         bool ok=true;
-        if(!view){
+        bool newView=!view;
+        if(newView){
             P go=extra.object_new(gameObjectClass);
             if(!go)return nullptr;
             object=gchandle_new(go,true);
@@ -67,11 +68,20 @@ struct State {
         }
         P target=gchandle_get_target(view);
         if(!extra.alive(target,ok)){clear(extra);return nullptr;}
-        P args[]={camera};invoke(copy,target,args,ok);
-        float depth=0;
-        if(!values.value(depthGet,camera,nullptr,depth,ok)||!std::isfinite(depth)){clear(extra);return nullptr;}
-        depth+=10.f;P depthArg[]={&depth};invoke(depthSet,target,depthArg,ok);
-        int flags=1;P clearArg[]={&flags};invoke(clearFlags,target,clearArg,ok);
+        if(newView){
+            P args[]={camera};invoke(copy,target,args,ok);
+            float depth=0;
+            if(!values.value(depthGet,camera,nullptr,depth,ok)||!std::isfinite(depth)){clear(extra);return nullptr;}
+            depth+=10.f;P depthArg[]={&depth};invoke(depthSet,target,depthArg,ok);
+            int flags=1;P clearArg[]={&flags};invoke(clearFlags,target,clearArg,ok);
+        }
+        if(extra.returns(extra.fovGet,"System.Single")&&extra.returns(extra.fovSet,"System.Void")){
+            float fov=0,cloneFov=0;
+            if(values.value(extra.fovGet,camera,nullptr,fov,ok)&&values.value(extra.fovGet,target,nullptr,cloneFov,ok)&&
+                std::isfinite(fov)&&fabsf(fov-cloneFov)>.01f){
+                P args[]={&fov};invoke(extra.fovSet,target,args,ok);
+            }
+        }
         P targetTransform=invoke(transform,target,nullptr,ok);
         V3 angles{},direction{};
         if(!targetTransform||!values.value(eulerGet,cameraTransform,nullptr,angles,ok)||

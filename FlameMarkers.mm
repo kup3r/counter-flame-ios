@@ -182,7 +182,7 @@ struct Api {
     BOOL _nextAgent;
     BOOL _trigger,_bunnyHop;float _triggerDelay;double _bunnyProbe;
     BOOL _skyTint,_sceneLight,_playerTint;
-    float _skyHue,_sceneHour,_playerHue;
+    float _skyHue,_sceneHour,_sceneHue,_playerHue;
     float _trailTime;
     std::deque<TrailPoint> _trailPoints;
     std::vector<std::pair<Segment,float>> _trailSegments;
@@ -194,7 +194,7 @@ struct Api {
     if((self=[super initWithFrame:frame])){
         self.backgroundColor=UIColor.clearColor;self.userInteractionEnabled=YES;
         self.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight;
-        _sceneHandle=-1;_status=@"Flame v10: ESP off";_aimRadius=100;_aimSmoothing=10;_aimMaxTurn=180;_aimRing=YES;_trailTime=2;_cameraDistance=3;_spinSpeed=180;_triggerDelay=80;_skyHue=210;_sceneHour=14;_playerHue=180;
+        _sceneHandle=-1;_status=@"Flame v10: ESP off";_aimRadius=100;_aimSmoothing=10;_aimMaxTurn=180;_aimRing=YES;_trailTime=2;_cameraDistance=3;_spinSpeed=180;_triggerDelay=80;_skyHue=210;_sceneHour=14;_sceneHue=360;_playerHue=180;
         _speedFactor=1.5;_fovValue=90;_lineWidth=1.2;_corners=YES;_showFps=YES;
         _onlyEnemies=YES;_showBoxes=YES;_showSkeleton=YES;_showHealth=YES;_showDistance=YES;
         CGFloat width=fmin(740,frame.size.width-42),height=fmin(355,frame.size.height-30);
@@ -208,7 +208,7 @@ struct Api {
 - (NSDictionary*)preferences {
     NSDictionary* options=@{FlameOptionKey(Master):@NO,FlameOptionKey(Enemies):@(_onlyEnemies),FlameOptionKey(Boxes):@(_showBoxes),FlameOptionKey(Skeleton):@(_showSkeleton),FlameOptionKey(Health):@(_showHealth),FlameOptionKey(Names):@(_showNames),FlameOptionKey(Distance):@(_showDistance),FlameOptionKey(Tracers):@(_showTracers),FlameOptionKey(Debug):@(_debug),FlameOptionKey(Aim):@(_aim),FlameOptionKey(Recoil):@(_noRecoil),FlameOptionKey(NoSpread):@(_noSpread),FlameOptionKey(Speed):@(_speedHack),FlameOptionKey(Ammo):@(_unlimitedAmmo),FlameOptionKey(Fov):@(_fovOverride),FlameOptionKey(Crosshair):@(_crosshair),FlameOptionKey(CornerBox):@(_corners),FlameOptionKey(FilledBox):@(_filled),FlameOptionKey(HeadCircle):@(_headCircle),FlameOptionKey(FPSCounter):@(_showFps),
         FlameOptionKey(AimRing):@(_aimRing),FlameOptionKey(Glow):@(_glow),FlameOptionKey(Vignette):@(_vignette),FlameOptionKey(CenterDot):@(_centerDot),FlameOptionKey(Trail):@(_trail),FlameOptionKey(SkyTint):@(_skyTint),FlameOptionKey(SceneLight):@(_sceneLight),FlameOptionKey(PlayerTint):@(_playerTint),FlameOptionKey(Trigger):@(_trigger),FlameOptionKey(BunnyHop):@(_bunnyHop),FlameOptionKey(ThirdPerson):@(_thirdPerson),FlameOptionKey(Spin):@(_spin)};
-    return @{@"options":options,@"cameraDistance":@(_cameraDistance),@"spinSpeed":@(_spinSpeed),@"triggerDelay":@(_triggerDelay),@"aimPoint":@(_aimPoint),@"trailTime":@(_trailTime),@"skyHue":@(_skyHue),@"sceneHour":@(_sceneHour),@"playerHue":@(_playerHue),@"aimRadius":@(_aimRadius),@"aimSmoothing":@(_aimSmoothing),@"aimDelay":@(_aimDelay),@"aimMaxTurn":@(_aimMaxTurn),@"aimDeadzone":@(_aimDeadzone),@"aimDistance":@(_aimDistance),@"speedFactor":@(_speedFactor),@"fov":@(_fovValue),@"maxDistance":@(_maxDistance),@"lineWidth":@(_lineWidth),@"accent":@(_accent),@"fps":@(_displayLink.preferredFramesPerSecond)};
+    return @{@"options":options,@"cameraDistance":@(_cameraDistance),@"spinSpeed":@(_spinSpeed),@"triggerDelay":@(_triggerDelay),@"aimPoint":@(_aimPoint),@"trailTime":@(_trailTime),@"skyHue":@(_skyHue),@"sceneHour":@(_sceneHour),@"sceneHue":@(_sceneHue),@"playerHue":@(_playerHue),@"aimRadius":@(_aimRadius),@"aimSmoothing":@(_aimSmoothing),@"aimDelay":@(_aimDelay),@"aimMaxTurn":@(_aimMaxTurn),@"aimDeadzone":@(_aimDeadzone),@"aimDistance":@(_aimDistance),@"speedFactor":@(_speedFactor),@"fov":@(_fovValue),@"maxDistance":@(_maxDistance),@"lineWidth":@(_lineWidth),@"accent":@(_accent),@"fps":@(_displayLink.preferredFramesPerSecond)};
 }
 - (void)flameSetOption:(NSInteger)tag value:(BOOL)value {
     UISwitch* change=[[UISwitch alloc]init];change.tag=tag;change.on=value;[self optionChanged:change];
@@ -222,6 +222,7 @@ struct Api {
     else if([key isEqual:@"triggerDelay"])_triggerDelay=std::clamp(value,0.0,350.0);
     else if([key isEqual:@"aimPoint"])_aimPoint=(NSInteger)std::clamp(value,0.0,3.0);
     else if([key isEqual:@"skyHue"])_skyHue=std::clamp(value,0.0,359.0);
+    else if([key isEqual:@"sceneHue"])_sceneHue=std::clamp(value,0.0,360.0);
     else if([key isEqual:@"sceneHour"])_sceneHour=std::clamp(value,0.0,24.0);
     else if([key isEqual:@"playerHue"])_playerHue=std::clamp(value,0.0,360.0);
     else if([key isEqual:@"trailTime"])_trailTime=std::clamp(value,.5,5.0);
@@ -476,7 +477,7 @@ struct Api {
                 if(_api.bodyLod)lod=invoke(_api.bodyLod,skeleton,nullptr,renderOK);
             }
         }
-        _sceneVisuals.tick(_extras,now,_skyTint,_skyHue,_sceneLight,_sceneHour,_playerTint,_playerHue,body,lod,viewCamera);
+        _sceneVisuals.tick(_extras,now,_skyTint,_skyHue,_sceneLight,_sceneHour,_sceneHue,_playerTint,_playerHue,body,lod,viewCamera);
     }
     BOOL fireHeld=NO;
     if(_extras.ready&&localController){
